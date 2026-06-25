@@ -1,0 +1,142 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  DONOR
+  NGO
+  VOLUNTEER
+}
+
+enum DonationStatus {
+  AVAILABLE
+  CLAIMED
+  PICKED_UP
+  DELIVERED
+  EXPIRED
+  CANCELLED
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  PICKED_UP
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  ASSIGNED
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  COMPLETED
+}
+
+// Models
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  phone         String?
+  location      String?
+  organization  String?   @default("")
+  role          UserRole  @default(DONOR)
+  isApproved    Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  donations     Donation[]      @relation("DonorDonations")
+  claims        Donation[]      @relation("NgoClaims")
+  pickups       PickupRequest[] @relation("VolunteerPickups")
+  adminLogs     AdminLog[]
+}
+
+model Donation {
+  id              String          @id @default(cuid())
+  foodType        String
+  quantity        String
+  description     String?
+  expiryTime      DateTime
+  pickupLocation  String
+  imageUrl        String?
+  status          DonationStatus  @default(AVAILABLE)
+  isUrgent        Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  donorId         String
+  donor           User            @relation("DonorDonations", fields: [donorId], references: [id])
+  claimedById     String?
+  claimedBy       User?           @relation("NgoClaims", fields: [claimedById], references: [id])
+  pickupRequest   PickupRequest?
+}
+
+model PickupRequest {
+  id              String          @id @default(cuid())
+  status          RequestStatus   @default(PENDING)
+  scheduledAt     DateTime?
+  pickedUpAt      DateTime?
+  deliveredAt     DateTime?
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  donationId      String          @unique
+  donation        Donation        @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  volunteerId      String?
+  volunteer       User?           @relation("VolunteerPickups", fields: [volunteerId], references: [id])
+  delivery        Delivery?
+}
+
+model Delivery {
+  id              String          @id @default(cuid())
+  status          DeliveryStatus  @default(ASSIGNED)
+  pickupPhotoUrl  String?
+  deliveryPhotoUrl String?
+  pickupTime      DateTime?
+  deliveryTime    DateTime?
+  distance        Float?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  pickupRequestId String          @unique
+  pickupRequest   PickupRequest   @relation(fields: [pickupRequestId], references: [id], onDelete: Cascade)
+}
+
+model AdminLog {
+  id          String    @id @default(cuid())
+  action      String
+  details     String?
+  level       String    @default("info") // info, warning, error, success
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+  createdAt   DateTime  @default(now())
+}
+
+// Indexes for performance
+model Verification {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+

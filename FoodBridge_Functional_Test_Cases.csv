@@ -1,0 +1,24 @@
+,,,,,FoodBridge - Food Donation Platform,,,,,,,,,,,,
+,,,,,Sprint 1,,,,,,,,,,,,
+,,,,,Functional Test Case Template,,,,,,,,,,,,
+Test Case ID,Version,Feature,Test Case,Preconditions,Steps to Execute Test Case,Test Data,Expected Output,Actual Output,Status,Bug ID,Bug Title,Screenshot,Root Cause (Issue Description),Resolution,Execution Date,Retest Status,Remarks
+TC_001,V1.0,Login,Login with valid credentials,User registered,Enter username & password -> Click login,Valid credentials,Login success,Error message,Fail,BUG_001,Login Failure,SS_001.png,Authentication logic error,Fixed backend validation,04-15-2026,,Initial failure
+TC_001,V1.1,Login,Login with valid credentials,User registered,Same steps,Valid credentials,Login success,Login success,Pass,BUG_001,Login Failure,SS_002.png,Issue resolved,Verified fix,04-16-2026,Pass,Retest successful
+TC_002,V1.0,Registration,Register as new Donor,No existing account,Fill registration form -> Select Donor -> Register,Valid details,Registration successful,No response,Fail,BUG_002,Registration Timeout,SS_003.png,Database connection timeout,Fixed DB integration,04-15-2026,,Issue found
+TC_002,V1.1,Registration,Register as new Donor,No existing account,Same steps,Same data,Registration successful,Registration successful,Pass,BUG_002,Registration Timeout,SS_004.png,Fixed,Verified,04-16-2026,Pass,Working
+TC_003,V1.0,Donation,Create food donation,Donor logged in,Enter food details -> Add location -> Submit,50 Meals / Downtown,Donation listed,Creation failed,Fail,BUG_003,Donation Failure,SS_005.png,Location validation error,Updated schema validation,04-15-2026,,Failed
+TC_003,V1.1,Donation,Create food donation,Donor logged in,Same steps,Valid details,Donation listed,Donation listed,Pass,BUG_003,Donation Failure,SS_006.png,Fixed,Verified,04-16-2026,Pass,Passed
+TC_004,V1.0,Claim Donation,NGO claims food,NGO logged in & food available,Select donation -> Click Claim,Donation ID: 123,Donation claimed,Error occurred,Fail,BUG_004,Claim Issue,SS_007.png,API not triggered,Fixed backend API,04-15-2026,,Failed
+TC_004,V1.1,Claim Donation,NGO claims food,NGO logged in & food available,Same steps,Same data,Donation claimed,Donation claimed,Pass,BUG_004,Claim Issue,SS_008.png,Fixed,Verified,04-16-2026,Pass,Passed
+TC_005,V1.0,Logout,Logout system,User logged in,Click logout,-,Logout success,Logout success,Pass,,,,,,,04-15-2026,,No issues
+,,,,,FoodBridge - Food Donation Platform,,,,,,,,,,,,
+,,,,,Sprint 2,,,,,,,,,,,,
+,,,,,Functional Test Case Template,,,,,,,,,,,,
+Test Case ID,Version,Feature,Test Case,Preconditions,Steps to Execute Test Case,Test Data,Expected Output,Actual Output,Status,Bug ID,Bug Title,Screenshot,Root Cause (Issue Description),Resolution,Execution Date,Retest Status,Remarks
+TC_006,V1.0,Volunteer Assignment,Admin assigns volunteer,Admin logged in & donation claimed,Select donation -> Assign volunteer,Volunteer ID: 456,Volunteer assigned,Volunteer missing,Fail,BUG_005,Assignment Failure,SS_009.png,Role filter issue,Fixed user query logic,04-17-2026,,Initial failure
+TC_006,V1.1,Volunteer Assignment,Admin assigns volunteer,Admin logged in & donation claimed,Same steps,Same data,Volunteer assigned,Volunteer assigned,Pass,BUG_005,Assignment Failure,SS_010.png,Fixed,Verified,04-18-2026,Pass,Retest successful
+TC_007,V1.0,Pickup,Volunteer accepts pickup,Volunteer logged in,Go to pickups -> Accept,Pickup ID: 789,Pickup accepted,Pickup accepted,Pass,,,,,,,04-17-2026,,No issues
+TC_008,V1.0,Delivery,Complete delivery,Volunteer logged in,Click complete delivery -> Confirm,Delivery ID: 789,Status DELIVERED,Update failed,Fail,BUG_007,Update Failure,SS_013.png,Database deadlock,Optimized transaction,04-17-2026,,Failed
+TC_008,V1.1,Delivery,Complete delivery,Volunteer logged in,Same steps,Same data,Status DELIVERED,Status DELIVERED,Pass,BUG_007,Update Failure,SS_014.png,Fixed,Verified,04-18-2026,Pass,Passed
+TC_009,V1.0,User Approval,Admin approves user,Admin logged in,Navigate to pending -> Approve,User ID: 101,Approved & email sent,Approved & email sent,Pass,,,,,,,04-17-2026,,Working fine
+TC_010,V1.0,Donation History,View history,Donor/NGO logged in,Click My Donations,User ID: 121,History displayed,History displayed,Pass,,,,,,,04-17-2026,,No issues
