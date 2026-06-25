@@ -180,7 +180,4 @@ After seeding the database, you can use these accounts:
 - `npm run build` - Build for production
 - `npm run lint` - Run ESLint
 
-## License
-
-MIT
 
