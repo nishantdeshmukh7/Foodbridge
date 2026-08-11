@@ -90,12 +90,19 @@ export const donationController = {
     try {
       const id = req.params.id as string;
       const status = req.body.status as string;
-      
-      const donation = await donationService.updateStatus(id, status);
+
+      const donation = await donationService.updateStatus(
+        id,
+        status,
+        req.user!.id,
+        req.user!.role,
+      );
       res.json(donation);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update donation';
-      res.status(400).json({ error: message });
+      // Return 403 when the service throws an authorization error.
+      const statusCode = message === 'Not authorized to update this donation' ? 403 : 400;
+      res.status(statusCode).json({ error: message });
     }
   },
 

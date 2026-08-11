@@ -77,12 +77,27 @@ feed-forward-main/
    cp .env.example .env
    ```
 
-4. Update `.env` with your database credentials:
-   ```
-   DATABASE_URL="postgresql://postgres:password@localhost:5432/foodbridge?schema=public"
-   JWT_SECRET="your-secret-key"
+4. Fill in your `.env` values — all required variables must be set before starting the server:
+
+   ```env
+   # Required — your local PostgreSQL connection string
+   DATABASE_URL=postgresql://postgres:<your-password>@localhost:5432/foodbridge?schema=public
+
+   # Required — generate a strong random secret, never use a placeholder in production
+   # Generate one with: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+   JWT_SECRET=<generate-your-own-secret>
+
+   # Required in production; optional in development (defaults to http://localhost:8080)
+   FRONTEND_URL=http://localhost:8080
+
+   # Optional
    PORT=3001
+   NODE_ENV=development
+   JWT_EXPIRES_IN=7d
    ```
+
+   > **Important:** `JWT_SECRET` and `DATABASE_URL` are required. The server will exit with a
+   > clear error message if either is missing. Never commit `.env` to version control.
 
 5. Generate Prisma client and run migrations:
    ```bash
@@ -101,7 +116,7 @@ feed-forward-main/
 
 1. Navigate to the project root:
    ```bash
-   cd feed-forward-main
+   cd FOODBRIDGE
    ```
 
 2. Install dependencies:
@@ -109,8 +124,14 @@ feed-forward-main/
    npm install
    ```
 
-3. Create a `.env` file in the root:
+3. Copy the environment file and set the backend URL:
+   ```bash
+   cp .env.example .env
    ```
+
+   The `.env` should contain:
+   ```env
+   # Must be set before running npm run build — Vite bakes this into the bundle
    VITE_API_URL=http://localhost:3001/api
    ```
 
@@ -119,7 +140,7 @@ feed-forward-main/
    npm run dev
    ```
 
-   The frontend will be available at `http://localhost:5173`
+   The frontend will be available at `http://localhost:8080`
 
 ## Default Test Accounts
 

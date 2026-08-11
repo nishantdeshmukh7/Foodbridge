@@ -187,7 +187,23 @@ export const donationService = {
     return updated;
   },
 
-  async updateStatus(donationId: string, status: string) {
+  async updateStatus(donationId: string, status: string, userId: string, userRole: string) {
+    // For DONOR callers, verify they own this donation before updating.
+    if (userRole === 'DONOR') {
+      const existing = await prisma.donation.findUnique({
+        where: { id: donationId },
+        select: { donorId: true },
+      });
+
+      if (!existing) {
+        throw new Error('Donation not found');
+      }
+
+      if (existing.donorId !== userId) {
+        throw new Error('Not authorized to update this donation');
+      }
+    }
+
     const donation = await prisma.donation.update({
       where: { id: donationId },
       data: { status: status as 'AVAILABLE' | 'CLAIMED' | 'PICKED_UP' | 'DELIVERED' | 'EXPIRED' | 'CANCELLED' },

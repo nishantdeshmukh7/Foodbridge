@@ -20,13 +20,20 @@ export const userController = {
   async getById(req: AuthRequest, res: Response) {
     try {
       const id = req.params.id as string;
+
+      // Only ADMIN may retrieve any user; all other roles may only read their own profile.
+      if (req.user!.role !== 'ADMIN' && req.user!.id !== id) {
+        res.status(403).json({ error: 'Not authorized to view this user profile' });
+        return;
+      }
+
       const user = await userService.getById(id);
-      
+
       if (!user) {
         res.status(404).json({ error: 'User not found' });
         return;
       }
-      
+
       res.json(user);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to get user';
