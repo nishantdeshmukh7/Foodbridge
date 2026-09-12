@@ -1,13 +1,22 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { 
-  ArrowRight, Clock, Truck, Users, Building, ShieldCheck, 
+import {
+  ArrowRight, Truck, Users, Building, ShieldCheck,
   Leaf, Heart, Globe, Star, CheckCircle, AlertCircle,
-  Phone, Mail, MapPin, Timer, Package, RefreshCw
+  Package
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
+// Phase 16: consolidated from 5 steps to 4, matched 1:1 to the real
+// Donation status states (AVAILABLE -> CLAIMED -> PICKED_UP -> DELIVERED).
+// Removed: 5km-radius NGO alerts, capacity-based allocation, automated
+// volunteer matching, in-app navigation, real-time tracking, photo
+// documentation, and digital/recipient signature capture - none of these
+// exist. Corrected: the food safety checklist is completed by the DONOR
+// when creating the listing, not by the volunteer at pickup. Corrected:
+// volunteer assignment is either self-accept by a volunteer or manual
+// assignment by an admin - never NGO-initiated.
 const detailedSteps = [
   {
     num: "01",
@@ -18,59 +27,41 @@ const detailedSteps = [
       "Set pickup location",
       "Choose expiry window (1-24 hours)",
       "Add optional description",
-      "Mark as urgent if time-critical"
+      "Mark as urgent if time-critical",
+      "Confirm the food safety checklist",
     ],
     icon: Package,
   },
   {
     num: "02",
     title: "NGO Claims Donation",
-    desc: "Nearby NGOs receive instant notifications and can claim available donations based on their capacity and requirements.",
+    desc: "Approved NGOs can browse every available donation and claim the ones they can use.",
     details: [
-      "Real-time notifications to NGOs within 5km",
-      "View donation details and distance",
+      "View donation details on the dashboard",
       "One-tap claim functionality",
-      "Capacity-based allocation",
-      "Option to request multiple items"
+      "Donor and NGO are notified once claimed",
     ],
     icon: Heart,
   },
   {
     num: "03",
-    title: "Volunteer Assignment",
-    desc: "Once claimed, volunteers are assigned or can accept pickup requests to transport the food from donor to NGO.",
+    title: "Volunteer Pickup",
+    desc: "A volunteer accepts the pickup themselves, or an admin assigns one directly, then collects the food from the donor.",
     details: [
-      "Automated volunteer matching",
-      "Manual assignment option for NGOs",
-      "Volunteer accepts and confirms",
-      "Navigation to pickup location",
-      "Real-time tracking"
+      "Volunteer self-accepts an available pickup, or an admin assigns one",
+      "Volunteer confirms the pickup",
+      "Food is collected from the donor location",
     ],
     icon: Truck,
   },
   {
     num: "04",
-    title: "Pickup & Verification",
-    desc: "Volunteers arrive at the donor location, verify the food quality through safety checklist, and collect the donation.",
-    details: [
-      "Arrival confirmation at location",
-      "Food safety checklist completion",
-      "Quantity verification",
-      "Photo documentation",
-      "Digital signature capture"
-    ],
-    icon: ShieldCheck,
-  },
-  {
-    num: "05",
     title: "Delivery & Completion",
-    desc: "Food is transported to the assigned NGO and delivered to those in need. Impact is tracked and recorded.",
+    desc: "The volunteer delivers the food to the claiming NGO and marks it complete.",
     details: [
-      "Navigation to delivery location",
-      "Delivery confirmation",
-      "Photo proof of delivery",
-      "Recipient signature",
-      "Impact metrics updated"
+      "Food is transported to the NGO",
+      "Volunteer marks the donation delivered",
+      "Donor and NGO are both notified",
     ],
     icon: Globe,
   },
@@ -103,40 +94,48 @@ const useCases = [
   },
 ];
 
+// Phase 16: matches the real checklist a donor confirms when creating a
+// listing (see DonorDashboard's New Food Listing form) exactly - no
+// fabricated temperature thresholds, time windows, or allergy fields.
 const safetyChecklist = [
-  "Food prepared in hygienic conditions within the last 24 hours",
-  "Stored at proper temperature (hot foods above 60°C, cold foods below 4°C)",
-  "No signs of spoilage, discoloration, or unusual odor",
-  "Packaged in clean, food-grade containers",
-  "Allergy information provided where applicable",
-  "Within the suggested expiry time window",
-  "Sealed properly for transportation",
+  "Food prepared in hygienic conditions",
+  "Stored at proper temperature",
+  "No signs of spoilage",
+  "Packed in clean containers",
 ];
 
+// Phase 16: rewritten for accuracy. Removed a fabricated pickup-time SLA
+// (no such guarantee exists), "beverages" as a food type (not one of the
+// real options), a volunteer-reimbursement claim (doesn't exist), and a
+// claim that NGOs can set food-type/quantity preferences (no such profile
+// field exists). Corrected the safety-checklist FAQ to attribute it to the
+// donor at listing time, not the volunteer at pickup, and removed the
+// fabricated photo-documentation claim. Corrected the expiry FAQ to
+// honestly state that expired listings are not automatically removed.
 const faqs = [
   {
     q: "How quickly can a donation be picked up?",
-    a: "Most donations are picked up within 1-2 hours of listing. Urgent donations with less than 2 hours expiry are prioritized and typically picked up within 30-45 minutes.",
+    a: "It depends on how quickly a volunteer accepts (or an admin assigns) the pickup after an NGO claims the donation - there's no fixed guarantee. Marking a listing urgent helps it stand out.",
   },
   {
     q: "What types of food can be donated?",
-    a: "We accept cooked food, raw ingredients, packaged items, bakery products, fruits and vegetables, and beverages. All items must be safe for consumption and meet our safety standards.",
+    a: "Cooked food, raw ingredients, packaged food, fruits & vegetables, and bakery items. All items must be safe for consumption and meet our food safety checklist.",
   },
   {
     q: "Is there any cost involved?",
-    a: "No, the platform is completely free for all users. Donors list food for free, NGOs receive donations at no cost, and volunteers can opt for transportation reimbursements.",
+    a: "No, the platform is free for all users - donors, NGOs, and volunteers.",
   },
   {
     q: "How do you ensure food safety?",
-    a: "We have a mandatory safety checklist that volunteers must complete at pickup. Donors also certify that food meets hygiene standards. All steps are documented with photos.",
+    a: "Donors confirm a food safety checklist - hygienic preparation, proper storage temperature, no signs of spoilage, and clean packaging - before a listing can be posted.",
   },
   {
     q: "Can NGOs request specific items?",
-    a: "Yes, NGOs can browse available donations and claim items that match their needs. They can also set preferences for food types and quantities in their profile.",
+    a: "NGOs can browse every available donation and claim the ones that match their needs. There's currently no way to set standing preferences or get notified about specific food types.",
   },
   {
     q: "What happens if food expires before pickup?",
-    a: "If food expires before being picked up, the donation status is updated to 'EXPIRED' and removed from available listings. This helps maintain food safety standards.",
+    a: "Currently, the platform does not automatically remove or flag donations once their expiry window passes - the listing stays as-is unless a donor cancels it. We recommend checking expiry times before claiming or assigning a pickup.",
   },
 ];
 
@@ -297,9 +296,9 @@ const HowItWorks = () => {
                 Food Safety Standards
               </h2>
               <p className="text-muted-foreground leading-relaxed mb-6">
-                We take food safety seriously. Every donation goes through a verification process to ensure it reaches recipients safely.
+                We take food safety seriously. Every donor confirms this checklist before a listing can be posted.
               </p>
-              
+
               <div className="space-y-4">
                 {safetyChecklist.map((item, i) => (
                   <div key={i} className="flex items-start gap-3">
@@ -313,12 +312,19 @@ const HowItWorks = () => {
             <div className="bg-background border border-border p-6">
               <div className="flex items-center gap-3 mb-6">
                 <AlertCircle className="w-6 h-6 text-amber-500" />
-                <h3 className="font-bold text-lg">Important Guidelines</h3>
+                <h3 className="font-bold text-lg">Guidance For Donors</h3>
               </div>
-              
+              {/* Phase 16: reworded from "Important Guidelines" / "Cannot Be
+                  Donated" framing, which implied the platform checks and
+                  enforces these specifics (a 4-hour sitting-out limit,
+                  reheated-food detection). No such enforcement exists -
+                  the only real check is the donor's own checklist
+                  confirmation above. This is now explicitly self-check
+                  guidance for the donor, not a claimed platform capability. */}
+
               <div className="space-y-4">
                 <div className="p-4 border border-border">
-                  <h4 className="font-semibold text-sm mb-2 text-red-500">Cannot Be Donated</h4>
+                  <h4 className="font-semibold text-sm mb-2 text-red-500">Please Don't List</h4>
                   <ul className="text-sm text-muted-foreground space-y-1">
                     <li>• Expired or spoiled food</li>
                     <li>• Food that has been sitting out for more than 4 hours</li>
@@ -337,53 +343,6 @@ const HowItWorks = () => {
                   </ul>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Timeline Section */}
-      <section className="border-b border-border">
-        <div className="container py-16 md:py-20">
-          <div className="mb-12 text-center">
-            <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Average Times</span>
-            <h2 className="text-3xl md:text-4xl font-black tracking-tight mt-2">
-              What to Expect
-            </h2>
-          </div>
-
-          <div className="max-w-3xl mx-auto">
-            <div className="relative">
-              <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-border" />
-              
-              {[
-                { time: "0 min", title: "Donor Lists Food", desc: "Surplus food is listed on the platform" },
-                { time: "5-15 min", title: "NGO Receives Alert", desc: "Nearby NGOs get notified and claim donation" },
-                { time: "15-30 min", title: "Volunteer Assigned", desc: "Volunteer accepts and heads to pickup" },
-                { time: "30-45 min", title: "Food Picked Up", desc: "Volunteer verifies and collects food" },
-                { time: "45-60 min", title: "Delivery Complete", desc: "Food delivered to NGO and impact logged" },
-              ].map((item, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, x: -10 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                  className="relative pl-20 pb-8 last:pb-0"
-                >
-                  <div className="absolute left-4 w-8 h-8 bg-primary flex items-center justify-center rounded-full">
-                    <span className="text-xs font-bold text-primary-foreground">{i + 1}</span>
-                  </div>
-                  <div className="bg-card border border-border p-4">
-                    <div className="flex items-center gap-3 mb-1">
-                      <Timer className="w-4 h-4 text-primary" />
-                      <span className="text-xs font-mono text-primary font-semibold">{item.time}</span>
-                    </div>
-                    <h4 className="font-bold mb-1">{item.title}</h4>
-                    <p className="text-sm text-muted-foreground">{item.desc}</p>
-                  </div>
-                </motion.div>
-              ))}
             </div>
           </div>
         </div>
@@ -413,36 +372,6 @@ const HowItWorks = () => {
                 <p className="text-sm text-muted-foreground leading-relaxed">{faq.a}</p>
               </motion.div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Contact Section */}
-      <section className="border-b border-border">
-        <div className="container py-16 md:py-20">
-          <div className="max-w-2xl mx-auto text-center">
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight mb-4">
-              Still Have Questions?
-            </h2>
-            <p className="text-muted-foreground mb-8">
-              Our team is here to help you understand the process and get started.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a 
-                href="mailto:support@foodbridge.com" 
-                className="flex items-center justify-center gap-2 border border-border px-6 py-3 hover:bg-card transition-colors"
-              >
-                <Mail className="w-4 h-4" />
-                <span className="text-sm font-semibold">support@foodbridge.com</span>
-              </a>
-              <a 
-                href="tel:+919876543210" 
-                className="flex items-center justify-center gap-2 border border-border px-6 py-3 hover:bg-card transition-colors"
-              >
-                <Phone className="w-4 h-4" />
-                <span className="text-sm font-semibold">+91 98765 43210</span>
-              </a>
-            </div>
           </div>
         </div>
       </section>

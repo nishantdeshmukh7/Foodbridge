@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
+import Profile from "@/pages/Profile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -473,6 +474,7 @@ const VolunteerDashboard = () => {
       <Route path="/" element={<DashboardLayout role="volunteer" title="Overview"><Overview /></DashboardLayout>} />
       <Route path="/tasks" element={<DashboardLayout role="volunteer" title="Pickup Tasks"><PickupTasks /></DashboardLayout>} />
       <Route path="/completed" element={<DashboardLayout role="volunteer" title="Completed"><Completed /></DashboardLayout>} />
+      <Route path="/profile" element={<DashboardLayout role="volunteer" title="Profile"><Profile /></DashboardLayout>} />
     </Routes>
   );
 };

@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
+import Profile from "@/pages/Profile";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { donationsApi, Donation, CreateDonationData } from "@/api";
-import { Package, Clock, CheckCircle, XCircle, AlertTriangle, Plus, Trash2, Eye, Edit, Loader2 } from "lucide-react";
+import { Package, Clock, CheckCircle, XCircle, AlertTriangle, Plus, Ban, Loader2 } from "lucide-react";
 
 function StatCard({ label, value, icon: Icon, accent = false }: { label: string; value: string | number; icon: React.ElementType; accent?: boolean }) {
   return (
@@ -66,11 +67,55 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function Overview() {
+// Client-side hint only - mirrors donationService.cancel()'s server-side
+// rule (a UI display decision, not an authorization decision: the server
+// re-checks this exact condition atomically and is what actually enforces
+// it, so a stale hint here just means a clear conflict toast instead of a
+// silent wrong button).
+function canCancelDonation(donation: Donation): boolean {
+  if (donation.status === 'AVAILABLE') return true;
+  return donation.status === 'CLAIMED' && !donation.pickupRequest?.volunteer;
+}
+
+function useCancelDonation() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  // A native confirm() dialog blocks the whole page until dismissed, which
+  // already rules out a same-row double-click while it's open. This ref
+  // covers the remaining window - after confirming, before the mutation's
+  // own isPending has propagated to a re-render - so a second confirm+click
+  // on the same row can't fire a second request.
+  const inFlight = useRef<Set<string>>(new Set());
+
+  const mutation = useMutation({
+    mutationFn: (id: string) => donationsApi.cancel(id),
+    onSettled: (_data, _error, id) => {
+      inFlight.current.delete(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-donations'] });
+      queryClient.invalidateQueries({ queryKey: ['donation-stats'] });
+      toast({ title: "Donation cancelled", description: "Your donation has been cancelled." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Cancellation failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const cancelDonation = (donation: Donation) => {
+    if (inFlight.current.has(donation.id)) return;
+    if (!confirm(`Cancel "${donation.foodType}"? This cannot be undone.`)) return;
+    inFlight.current.add(donation.id);
+    mutation.mutate(donation.id);
+  };
+
+  return { cancelDonation, isPending: (id: string) => mutation.isPending && mutation.variables === id };
+}
+
+function Overview() {
   const navigate = useNavigate();
-  
+  const { cancelDonation, isPending } = useCancelDonation();
+
   const { data: donations = [], isLoading } = useQuery({
     queryKey: ['my-donations'],
     queryFn: () => donationsApi.getMyDonations(),
@@ -79,17 +124,6 @@ function Overview() {
   const { data: stats } = useQuery({
     queryKey: ['donation-stats'],
     queryFn: () => donationsApi.getStats(),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => donationsApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-donations'] });
-      toast({ title: "Success", description: "Donation deleted successfully" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
   });
 
   const activeDonations = donations.filter(d => d.status === 'AVAILABLE');
@@ -146,18 +180,20 @@ function Overview() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {donation.status === 'AVAILABLE' && (
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-destructive"
-                      onClick={() => {
-                        if (confirm('Are you sure you want to delete this donation?')) {
-                          deleteMutation.mutate(donation.id);
-                        }
-                      }}
+                  {canCancelDonation(donation) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs uppercase tracking-wider text-destructive border-destructive/40 hover:bg-destructive/10"
+                      disabled={isPending(donation.id)}
+                      onClick={() => cancelDonation(donation)}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {isPending(donation.id) ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <Ban className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      Cancel
                     </Button>
                   )}
                 </div>
@@ -333,23 +369,11 @@ function CreateListing() {
 }
 
 function Listings() {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  
+  const { cancelDonation, isPending } = useCancelDonation();
+
   const { data: donations = [], isLoading } = useQuery({
     queryKey: ['my-donations'],
     queryFn: () => donationsApi.getMyDonations(),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => donationsApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-donations'] });
-      toast({ title: "Success", description: "Donation deleted successfully" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
   });
 
   if (isLoading) {
@@ -388,18 +412,20 @@ function Listings() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {donation.status === 'AVAILABLE' && (
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-destructive"
-                      onClick={() => {
-                        if (confirm('Are you sure you want to delete this donation?')) {
-                          deleteMutation.mutate(donation.id);
-                        }
-                      }}
+                  {canCancelDonation(donation) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs uppercase tracking-wider text-destructive border-destructive/40 hover:bg-destructive/10"
+                      disabled={isPending(donation.id)}
+                      onClick={() => cancelDonation(donation)}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {isPending(donation.id) ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <Ban className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      Cancel
                     </Button>
                   )}
                 </div>
@@ -413,6 +439,8 @@ function Listings() {
 }
 
 function Requests() {
+  const { cancelDonation, isPending } = useCancelDonation();
+
   const { data: donations = [], isLoading } = useQuery({
     queryKey: ['my-donations'],
     queryFn: () => donationsApi.getMyDonations(),
@@ -454,7 +482,25 @@ function Requests() {
                     </p>
                   )}
                 </div>
-                <StatusBadge status={donation.status} />
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={donation.status} />
+                  {canCancelDonation(donation) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs uppercase tracking-wider text-destructive border-destructive/40 hover:bg-destructive/10"
+                      disabled={isPending(donation.id)}
+                      onClick={() => cancelDonation(donation)}
+                    >
+                      {isPending(donation.id) ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <Ban className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      Cancel
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
           ))
@@ -471,6 +517,7 @@ const DonorDashboard = () => {
       <Route path="/create" element={<DashboardLayout role="donor" title="Create Listing"><CreateListing /></DashboardLayout>} />
       <Route path="/listings" element={<DashboardLayout role="donor" title="My Listings"><Listings /></DashboardLayout>} />
       <Route path="/requests" element={<DashboardLayout role="donor" title="Requests"><Requests /></DashboardLayout>} />
+      <Route path="/profile" element={<DashboardLayout role="donor" title="Profile"><Profile /></DashboardLayout>} />
     </Routes>
   );
 };

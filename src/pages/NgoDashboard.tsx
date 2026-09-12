@@ -1,15 +1,16 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { Routes, Route } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
+import Profile from "@/pages/Profile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { donationsApi, pickupsApi, Donation } from "@/api";
-import { MapPin, Clock, Package, Truck, CheckCircle, Phone, Navigation, Search, Filter, Loader2 } from "lucide-react";
+import { MapPin, Clock, Package, Truck, CheckCircle, Phone, Navigation, Search, Loader2, Undo2 } from "lucide-react";
 
 function StatCard({ label, value, icon: Icon, accent = false }: { label: string; value: string | number; icon: React.ElementType; accent?: boolean }) {
   return (
@@ -63,10 +64,57 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function Overview() {
+// Client-side hint only, mirroring donationService.releaseClaim()'s server
+// rule - the server re-checks all of this atomically. The claimedBy.id
+// check is now redundant with the server-side scoping in getMyClaims()
+// (Phase 12.5 - every donation this page fetches already belongs to the
+// caller), but is kept as cheap defense in depth against this data ever
+// being shown via a differently-scoped query in the future.
+function canReleaseClaim(donation: Donation, currentUserId: string | undefined): boolean {
+  if (!currentUserId || donation.status !== 'CLAIMED') return false;
+  if (donation.claimedBy?.id !== currentUserId) return false;
+  return !donation.pickupRequest?.volunteerId;
+}
+
+function useReleaseClaim() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+  // Same synchronous double-submit guard used for donor cancellation
+  // (Phase 12) - covers the gap between confirm() resolving and the
+  // mutation's own isPending reaching a re-render.
+  const inFlight = useRef<Set<string>>(new Set());
+
+  const mutation = useMutation({
+    mutationFn: (id: string) => donationsApi.release(id),
+    onSettled: (_data, _error, id) => {
+      inFlight.current.delete(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['available-donations'] });
+      queryClient.invalidateQueries({ queryKey: ['my-claims'] });
+      toast({ title: "Claim released", description: "The donation is available for other NGOs to claim." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Release failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const releaseClaim = (donation: Donation) => {
+    if (inFlight.current.has(donation.id)) return;
+    if (!confirm(`Release your claim on "${donation.foodType}"? Another NGO will be able to claim it.`)) return;
+    inFlight.current.add(donation.id);
+    mutation.mutate(donation.id);
+  };
+
+  return { releaseClaim, isPending: (id: string) => mutation.isPending && mutation.variables === id };
+}
+
+function Overview() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { releaseClaim, isPending } = useReleaseClaim();
+
   const { data: availableDonations = [], isLoading: loadingAvailable } = useQuery({
     queryKey: ['available-donations'],
     queryFn: () => donationsApi.getAll({ status: 'AVAILABLE' }),
@@ -74,7 +122,7 @@ function Overview() {
 
   const { data: myClaims = [], isLoading: loadingClaims } = useQuery({
     queryKey: ['my-claims'],
-    queryFn: () => donationsApi.getAll({ status: 'CLAIMED' }),
+    queryFn: () => donationsApi.getMyClaims({ status: 'CLAIMED' }),
   });
 
   const claimMutation = useMutation({
@@ -163,10 +211,28 @@ function Overview() {
                     {donation.status === "PICKED_UP" ? "In Transit" : "Claimed"}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span>From: {donation.donor.name}</span>
-                  {donation.pickupRequest?.volunteer && (
-                    <span>Volunteer: {donation.pickupRequest.volunteer.name}</span>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span>From: {donation.donor.name}</span>
+                    {donation.pickupRequest?.volunteer && (
+                      <span>Volunteer: {donation.pickupRequest.volunteer.name}</span>
+                    )}
+                  </div>
+                  {canReleaseClaim(donation, user?.id) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs uppercase tracking-wider flex-shrink-0"
+                      disabled={isPending(donation.id)}
+                      onClick={() => releaseClaim(donation)}
+                    >
+                      {isPending(donation.id) ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <Undo2 className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      Release Claim
+                    </Button>
                   )}
                 </div>
               </div>
@@ -182,8 +248,7 @@ function BrowseFood() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
-  const [filter, setFilter] = useState("5km");
-  
+
   const { data: donations = [], isLoading } = useQuery({
     queryKey: ['available-donations', searchTerm],
     queryFn: () => donationsApi.getAll({ 
@@ -216,26 +281,24 @@ function BrowseFood() {
       <div className="flex flex-col md:flex-row md:items-center gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search by food type..." 
-            className="pl-9" 
+          <Input
+            placeholder="Search by food type..."
+            className="pl-9"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-36">
-            <Filter className="w-3.5 h-3.5 mr-1" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="1km">Within 1 km</SelectItem>
-            <SelectItem value="3km">Within 3 km</SelectItem>
-            <SelectItem value="5km">Within 5 km</SelectItem>
-            <SelectItem value="10km">Within 10 km</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
+      {/* Phase 15: the "Within X km" distance filter that used to be here
+          was removed rather than fixed. It never actually filtered
+          results (Phase 9 audit), and genuine distance filtering isn't
+          implementable with the current data model - User.location and
+          Donation.pickupLocation are free-text addresses with no
+          coordinates anywhere in the schema, and no geocoding provider
+          exists in this project. See the Phase 15 report for the
+          architectural blocker and what a real implementation would
+          require. A non-functional control that claimed to filter by
+          kilometers was worse than no control at all. */}
 
       <div className="space-y-3">
         {donations.length === 0 ? (
@@ -302,9 +365,12 @@ function BrowseFood() {
 }
 
 function MyRequests() {
+  const { user } = useAuth();
+  const { releaseClaim, isPending } = useReleaseClaim();
+
   const { data: claimedDonations = [], isLoading } = useQuery({
     queryKey: ['my-claims'],
-    queryFn: () => donationsApi.getAll({ status: 'CLAIMED' }),
+    queryFn: () => donationsApi.getMyClaims({ status: 'CLAIMED' }),
   });
 
   if (isLoading) {
@@ -348,6 +414,22 @@ function MyRequests() {
                   <Badge className={`text-xs uppercase ${statusColors[donation.status] || ''}`}>
                     {donation.status.replace("_", " ")}
                   </Badge>
+                  {canReleaseClaim(donation, user?.id) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs uppercase tracking-wider"
+                      disabled={isPending(donation.id)}
+                      onClick={() => releaseClaim(donation)}
+                    >
+                      {isPending(donation.id) ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <Undo2 className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      Release Claim
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -361,7 +443,7 @@ function MyRequests() {
 function Tracking() {
   const { data: claimedDonations = [], isLoading } = useQuery({
     queryKey: ['my-claims'],
-    queryFn: () => donationsApi.getAll({ status: 'CLAIMED' }),
+    queryFn: () => donationsApi.getMyClaims({ status: 'CLAIMED' }),
   });
 
   if (isLoading) {
@@ -437,6 +519,7 @@ const NgoDashboard = () => {
       <Route path="/browse" element={<DashboardLayout role="ngo" title="Browse Food"><BrowseFood /></DashboardLayout>} />
       <Route path="/requests" element={<DashboardLayout role="ngo" title="My Requests"><MyRequests /></DashboardLayout>} />
       <Route path="/tracking" element={<DashboardLayout role="ngo" title="Tracking"><Tracking /></DashboardLayout>} />
+      <Route path="/profile" element={<DashboardLayout role="ngo" title="Profile"><Profile /></DashboardLayout>} />
     </Routes>
   );
 };

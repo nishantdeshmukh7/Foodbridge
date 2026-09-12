@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -7,7 +7,6 @@ import { useToast } from "@/hooks/use-toast";
 
 const Login = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { login } = useAuth();
   const { toast } = useToast();
   
@@ -27,8 +26,16 @@ const Login = () => {
     }
   }, [toast]);
 
-  const from = location.state?.from?.pathname || "/";
-
+  // Phase 21: post-login redirect always goes to the role's own dashboard
+  // (below), never to an arbitrary "return to where you were" location.
+  // ProtectedRoute does pass `state={{ from: location }}` when it bounces
+  // an unauthenticated visitor here, but this page deliberately never
+  // reads it back out to navigate() with - doing so from an
+  // attacker-influenceable value would be exactly the open-redirect shape
+  // audited for this phase (see src/test/RedirectSafety.test.tsx). If a
+  // "return to where you were" feature is ever added, it must validate the
+  // target is an internal path (e.g. starts with a single "/", never "//"
+  // or a scheme) before passing it to navigate().
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -47,9 +54,12 @@ const Login = () => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Invalid email or password";
       
-      // Check if account is pending approval
+      // Check if account is pending approval, or was reviewed and rejected -
+      // these are distinct backend states/messages (see authService.login).
       if (errorMessage.includes('pending approval')) {
         navigate('/pending-approval');
+      } else if (errorMessage.includes('not approved')) {
+        navigate('/registration-rejected');
       } else {
         toast({
           title: "Login failed",
@@ -104,13 +114,19 @@ const Login = () => {
               />
             </div>
 
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="btn-dispatch w-full"
               disabled={isLoading}
             >
               {isLoading ? "Signing in..." : "Sign In"}
             </button>
+
+            <p className="text-xs text-center">
+              <Link to="/forgot-password" className="text-primary hover:underline">
+                Forgot password?
+              </Link>
+            </p>
 
             <p className="text-xs text-center text-muted-foreground">
               No account?{" "}

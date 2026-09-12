@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import {
   Package, Plus, List, Bell, Settings, BarChart3, Users, Truck,
-  MapPin, ClipboardCheck, CheckCircle, LogOut, Home, Heart
+  MapPin, ClipboardCheck, CheckCircle, LogOut, Home, Heart, UserCircle
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -9,6 +9,7 @@ import {
   SidebarProvider, SidebarTrigger, useSidebar,
 } from "@/components/ui/sidebar";
 import { NavLink } from "@/components/NavLink";
+import NotificationBell from "@/components/NotificationBell";
 import { useAuth } from "@/context/AuthContext";
 
 const donorNav = [
@@ -16,6 +17,7 @@ const donorNav = [
   { title: "Create Listing", url: "/donor/create", icon: Plus },
   { title: "My Listings", url: "/donor/listings", icon: List },
   { title: "Requests", url: "/donor/requests", icon: Bell },
+  { title: "Profile", url: "/donor/profile", icon: UserCircle },
 ];
 
 const ngoNav = [
@@ -23,19 +25,24 @@ const ngoNav = [
   { title: "Browse Food", url: "/ngo/browse", icon: MapPin },
   { title: "My Requests", url: "/ngo/requests", icon: ClipboardCheck },
   { title: "Tracking", url: "/ngo/tracking", icon: Truck },
+  { title: "Profile", url: "/ngo/profile", icon: UserCircle },
 ];
 
 const volunteerNav = [
   { title: "Overview", url: "/volunteer", icon: BarChart3 },
   { title: "Pickup Tasks", url: "/volunteer/tasks", icon: Truck },
   { title: "Completed", url: "/volunteer/completed", icon: CheckCircle },
+  { title: "Profile", url: "/volunteer/profile", icon: UserCircle },
 ];
 
 const adminNav = [
   { title: "Overview", url: "/admin", icon: BarChart3 },
   { title: "Users", url: "/admin/users", icon: Users },
+  { title: "Donations", url: "/admin/donations", icon: Package },
+  { title: "Assignments", url: "/admin/assignments", icon: Truck },
   { title: "Analytics", url: "/admin/analytics", icon: BarChart3 },
   { title: "Monitoring", url: "/admin/monitoring", icon: Settings },
+  { title: "Profile", url: "/admin/profile", icon: UserCircle },
 ];
 
 const roleConfig: Record<string, { label: string; nav: typeof donorNav; icon: React.ElementType }> = {
@@ -147,10 +154,7 @@ const DashboardLayout = ({ role, title, children }: DashboardLayoutProps) => {
               <span className="text-sm font-semibold">{title}</span>
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <button className="relative p-2 hover:bg-accent transition-colors">
-                <Bell className="w-4 h-4" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
-              </button>
+              <NotificationBell />
             </div>
           </header>
           <main className="flex-1 p-4 md:p-6 overflow-auto">

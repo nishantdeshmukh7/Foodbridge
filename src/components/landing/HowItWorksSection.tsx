@@ -1,5 +1,10 @@
 import { motion } from "framer-motion";
 
+// Phase 16: corrected to match the real workflow. Previously claimed a
+// 5km radius alert system (no distance data exists at all - see the
+// Phase 15 report), "nearest volunteer" matching with navigation and a
+// delivery route (no such matching or navigation exists), and captured
+// proof of delivery (no photo/signature capture exists).
 const steps = [
   {
     num: "01",
@@ -8,18 +13,18 @@ const steps = [
   },
   {
     num: "02",
-    title: "NGOs Request Nearby",
-    desc: "NGOs within 5 km radius get instant alerts. Request pickup with one tap.",
+    title: "NGOs Claim It",
+    desc: "Any approved NGO can browse available donations and claim one with a single tap.",
   },
   {
     num: "03",
-    title: "Volunteers Dispatch",
-    desc: "Nearest volunteer accepts. Gets navigation, pickup confirmation, and delivery route.",
+    title: "A Volunteer Picks Up",
+    desc: "A volunteer accepts the pickup themselves, or an admin assigns one directly.",
   },
   {
     num: "04",
     title: "Food Delivered",
-    desc: "Proof of delivery captured. Impact logged. Waste prevented. Community fed.",
+    desc: "The volunteer marks it delivered. The donor and NGO are both notified.",
   },
 ];
 

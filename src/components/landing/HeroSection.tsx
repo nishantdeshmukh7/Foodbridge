@@ -1,6 +1,20 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { ArrowRight, Clock } from "lucide-react";
+import { ArrowRight, Clock, Package, HeartHandshake, Truck as TruckIcon } from "lucide-react";
+
+// Phase 16: this used to be a "Live Dispatch Feed" with hardcoded fake
+// entries, a fake pulsing "live" indicator, and fake animated progress
+// bars presented as real-time platform activity. None of it was real -
+// removed rather than built out, per the Phase 16 truth pass. What
+// replaces it below is a plain, clearly-labeled explanation of the actual
+// four-stage workflow, matching donationService's real status enum
+// (AVAILABLE -> CLAIMED -> PICKED_UP -> DELIVERED).
+const workflowStages = [
+  { icon: Package, label: "Donor lists surplus food", detail: "Posted with quantity, pickup location, and expiry window." },
+  { icon: HeartHandshake, label: "NGO claims it", detail: "Any approved NGO can claim an available listing." },
+  { icon: TruckIcon, label: "Volunteer picks it up", detail: "A volunteer accepts, or an admin assigns one." },
+  { icon: Clock, label: "Delivered", detail: "Marked complete once it reaches the NGO." },
+];
 
 const HeroSection = () => {
   return (
@@ -50,40 +64,24 @@ const HeroSection = () => {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="border border-border bg-card"
           >
-            <div className="border-b border-border px-4 py-2 flex items-center justify-between">
-              <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Live Dispatch Feed</span>
-              <span className="w-2 h-2 bg-primary animate-pulse" />
+            <div className="border-b border-border px-4 py-2">
+              <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">How a donation moves</span>
             </div>
 
-            {[
-              { type: "Cooked Rice & Dal", qty: "25 kg", time: "43 min", from: "Hotel Saravana" },
-              { type: "Packaged Sandwiches", qty: "80 pcs", time: "1h 12m", from: "Café Central" },
-              { type: "Catering Surplus", qty: "15 kg", time: "28 min", from: "Event Hall #3" },
-              { type: "Bread & Pastries", qty: "40 pcs", time: "55 min", from: "Baker's Point" },
-            ].map((item, i) => (
-              <div key={i} className="border-b border-border relative">
-                <div className="absolute top-0 left-0 right-0 h-1 bg-primary/20">
-                  <div
-                    className="h-full bg-primary"
-                    style={{ width: `${100 - i * 20}%`, transition: "width 2s" }}
-                  />
+            {workflowStages.map((stage, i) => (
+              <div key={stage.label} className="border-b border-border last:border-b-0 px-4 py-4 flex items-start gap-3">
+                <div className="w-8 h-8 flex items-center justify-center bg-primary/10 text-primary shrink-0">
+                  <stage.icon className="w-4 h-4" />
                 </div>
-                <div className="px-4 py-3 flex items-center justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate">{item.type}</p>
-                    <p className="text-xs text-muted-foreground">{item.from}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-mono font-bold">{item.qty}</p>
-                    <p className="text-xs font-mono text-primary font-semibold">{item.time}</p>
-                  </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">
+                    <span className="text-primary font-mono mr-1">{i + 1}.</span>
+                    {stage.label}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{stage.detail}</p>
                 </div>
               </div>
             ))}
-
-            <div className="px-4 py-3 text-center">
-              <span className="text-xs font-mono text-muted-foreground uppercase">4 Active Dispatches</span>
-            </div>
           </motion.div>
         </div>
       </div>

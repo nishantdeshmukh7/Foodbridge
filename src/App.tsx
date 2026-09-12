@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
-import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
@@ -9,8 +8,11 @@ import Index from "./pages/Index.tsx";
 import HowItWorks from "./pages/HowItWorks.tsx";
 import Login from "./pages/Login.tsx";
 import Register from "./pages/Register.tsx";
+import ForgotPassword from "./pages/ForgotPassword.tsx";
+import ResetPassword from "./pages/ResetPassword.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import PendingApproval from "./pages/PendingApproval.tsx";
+import RegistrationRejected from "./pages/RegistrationRejected.tsx";
 import DonorDashboard from "./pages/DonorDashboard.tsx";
 import NgoDashboard from "./pages/NgoDashboard.tsx";
 import VolunteerDashboard from "./pages/VolunteerDashboard.tsx";
@@ -40,7 +42,10 @@ function AppRoutes() {
       <Route path="/how-it-works" element={<HowItWorks />} />
       <Route path="/login" element={<><AuthRedirect /><Login /></>} />
       <Route path="/register" element={<><AuthRedirect /><Register /></>} />
+      <Route path="/forgot-password" element={<><AuthRedirect /><ForgotPassword /></>} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/pending-approval" element={<PendingApproval />} />
+      <Route path="/registration-rejected" element={<RegistrationRejected />} />
       
       {/* Protected Dashboard Routes */}
       <Route
@@ -85,7 +90,6 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
-      <Sonner />
       <BrowserRouter>
         <AuthProvider>
           <AppRoutes />
