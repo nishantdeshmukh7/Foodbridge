@@ -1,0 +1,226 @@
+# Phase 19: minimal production-oriented compose file. Unlike
+# docker-compose.yml (local/CI-only - see its own header comment), this
+# file:
+#   - sets NODE_ENV=production unconditionally, not as a value someone has
+#     to remember to change
+#   - takes every secret from the environment (via a real .env.production
+#     file you create yourself - see .env.production.example) instead of
+#     hardcoding any value inline
+#   - does not run a database in a container. A real production Postgres
+#     should be a managed/external service (RDS, Cloud SQL, Supabase,
+#     etc.) with its own backup story - point DATABASE_URL at it. Running
+#     Postgres in an ephemeral container alongside the app is a dev/CI
+#     pattern, not a production one, and this file does not pretend
+#     otherwise.
+#   - does not include the Prometheus/Grafana/cAdvisor stack from the
+#     dev/CI compose file (see docker-compose.yml) - see README.md's
+#     "Grafana / Prometheus" section (Phase 28) for why that stack stays
+#     dev/CI-only rather than being added here.
+#
+# Phase 27: `frontend` (nginx - see nginx.conf) is now the only service
+# that publishes a port to the host. It serves the built SPA directly and
+# reverse-proxies /api and /health to `backend` over this Compose
+# project's own internal network - service-to-service DNS (the hostname
+# "backend") already works between containers on that network with no
+# extra configuration, so removing backend's host port publish here does
+# not break the proxy; it only removes the backend's direct reachability
+# from outside Docker entirely. See README.md's "Production Networking &
+# Reverse Proxy" section for the full topology diagram, and nginx.conf's
+# own header comment for exactly how the proxy is configured.
+#
+# Phase 28: both services now run as non-root, with every Linux
+# capability dropped, no-new-privileges set, and a read-only root
+# filesystem (tmpfs-mounted only where each process genuinely needs to
+# write at runtime). Resource limits are also set - see README.md's
+# "Container hardening" and "Resource limits" sections for the
+# per-container reasoning and how these values were chosen (real
+# `docker stats` observation during Phase 28's own verification run, not
+# a guess).
+#
+# Usage:
+#   cp .env.production.example .env.production   # then fill in real values
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Before the backend can serve traffic, its target database must already
+# have migrations applied - see README.md's "Deployment (Production)"
+# section for the exact command (`prisma migrate deploy`, run once, from
+# an environment with the same DATABASE_URL). The command below performs
+# that on every container start, which is safe (migrate deploy only ever
+# applies pending migrations, never generates or prompts) but means this
+# container's identity needs the same DB access a migration requires.
+
+services:
+  backend:
+    image: foodbridge-backend
+    build:
+      context: ./backend
+    container_name: foodbridge-backend-prod
+    restart: unless-stopped
+    # Phase 28: hardening. no-new-privileges blocks a process from ever
+    # gaining more privilege than it started with (e.g. via a setuid
+    # binary) - meaningless extra depth here since this image runs no
+    # such binaries, but free and standard practice. cap_drop: ALL removes
+    # every Linux capability the container's root user would otherwise
+    # still hold even after USER node in the Dockerfile - this app never
+    # binds a privileged port or does anything else that needs any
+    # capability at all, so there is nothing to add back. read_only plus
+    # the single /tmp tmpfs mount below covers everything Node/Prisma
+    # need to write at runtime - verified empirically (Phase 28's Docker
+    # drill), not assumed; the app has no other on-disk writes (no file
+    # uploads, no local cache directories).
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    # Conservative, not arbitrary - sized from real `docker stats` output
+    # observed while this container ran the full Phase 28 verification
+    # suite (register/login/authenticated requests, migrate deploy) - see
+    # README.md's "Resource limits" section for the actual observed
+    # numbers and headroom reasoning. Adjust for your own real traffic
+    # rather than assuming these fit every deployment.
+    mem_limit: 256m
+    mem_reservation: 128m
+    cpus: 0.5
+    # Phase 27: deliberately no `ports:` here. This container is reachable
+    # as "backend:3001" from other containers on this Compose project's
+    # own network (that's exactly what nginx's reverse proxy uses - see
+    # nginx.conf) but is not published to the host, and therefore not
+    # reachable from outside Docker at all - not from the public internet,
+    # not from the host machine's own network interfaces. This is what
+    # actually makes TRUST_PROXY=1 below a safe assumption: it only
+    # protects against IP spoofing if the backend is genuinely unreachable
+    # except through the one trusted proxy hop (nginx) - see README.md's
+    # "TRUST_PROXY" section. If you need direct host access for one-off
+    # debugging, add a `ports: ["127.0.0.1:3001:3001"]` override
+    # temporarily (loopback-only, never a bare host port) - do not leave
+    # it published.
+    healthcheck:
+      # busybox wget ships in node:alpine - no extra package needed.
+      # Lets `depends_on: condition: service_healthy` below (and any
+      # container orchestrator that reads Docker healthchecks) know the
+      # backend is actually accepting requests, not just that its process
+      # has started. interval/timeout/retries/start_period are sized so a
+      # normal cold start (Prisma client init, migrate deploy already
+      # having run) passes comfortably, while a genuinely wedged process
+      # is still caught within about a minute, not left looking "healthy"
+      # indefinitely.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - see .env.production.example}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required - see .env.production.example}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL is required - see .env.production.example}
+      # Phase 27: 1 is correct for exactly this compose file's own
+      # topology - nginx (the `frontend` service) is the only hop between
+      # the public internet and this backend. If you put another reverse
+      # proxy/load balancer/CDN in front of that nginx too, increase this
+      # to 2 - see README.md's "TRUST_PROXY" section for why the count
+      # must match the real hop count exactly, not just "some proxy
+      # exists".
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      # Deliberately no DEV_EXPOSE_RESET_LINKS here - even if a stray value
+      # for it exists in the environment, NODE_ENV=production above makes
+      # it inert (see decideResetEmailMode() in email.service.ts).
+      # Phase 25: password-recovery email. Defaults to "none" (disabled,
+      # safe) - see .env.production.example for how to enable real SMTP
+      # delivery. Left empty-string when unset rather than omitted, so a
+      # partially-set SMTP_* value can never accidentally look complete.
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-none}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    command: sh -c "npx prisma migrate deploy && node dist/index.js"
+
+  frontend:
+    image: foodbridge-frontend
+    build:
+      context: .
+      args:
+        # Phase 27: defaults to /api - same-origin, through this nginx's
+        # own reverse proxy (see nginx.conf) - which works for ANY domain
+        # you eventually point at this deployment, since it's a relative
+        # path with no domain baked in. Override with an absolute URL
+        # (e.g. https://api.example.com/api) only if you deliberately
+        # deploy the backend on a genuinely separate origin instead of
+        # using this repo's own proxy - see README.md's "API URL
+        # strategy" section, and note the CSP connect-src caveat in
+        # nginx.conf if you do.
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    container_name: foodbridge-frontend-prod
+    restart: unless-stopped
+    # Phase 28: same hardening reasoning as backend above. nginx's own
+    # writable paths (cache/proxy temp files, its pid file) are tmpfs-
+    # mounted rather than left on the (now read-only) image filesystem -
+    # verified empirically, not assumed; access/error logs need no mount
+    # of their own since the base image already symlinks them to
+    # stdout/stderr, which read_only does not affect.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    # Long (volumes/tmpfs) form, not the short `tmpfs:` list, specifically
+    # for `mode: "1777"` (world-writable + sticky, same mode as a normal
+    # /tmp) - a bare tmpfs mount otherwise gets created root-owned, which
+    # the non-root nginx user then can't write into (mkdir() permission
+    # denied on /var/cache/nginx/client_temp - hit and fixed during this
+    # phase's own Docker verification, not theoretical).
+    volumes:
+      - type: tmpfs
+        target: /var/cache/nginx
+        tmpfs:
+          mode: 0o1777
+      - type: tmpfs
+        target: /var/run
+        tmpfs:
+          mode: 0o1777
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          mode: 0o1777
+    # nginx serving static files plus proxying is lightweight - sized the
+    # same way as backend's limits above (observed via `docker stats`
+    # during Phase 28's verification run), not guessed.
+    mem_limit: 64m
+    mem_reservation: 32m
+    cpus: 0.25
+    healthcheck:
+      # Answered entirely by nginx itself (see nginx.conf's /nginx-health)
+      # - proves this container's own process is up, independent of
+      # whether the backend/database are. Deliberately not /health here:
+      # that would make this container report unhealthy for a backend/DB
+      # problem that isn't nginx's own fault, which is exactly the
+      # failure-layer confusion README.md's "Health checks" section warns
+      # against.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/nginx-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    ports:
+      - "${FRONTEND_PORT:-80}:8080"
+      # Phase 27/28: uncomment once you've enabled the HTTPS server block
+      # in nginx.conf (see its own "Enabling HTTPS at this nginx" section)
+      # and mounted real certificates below - publishing 443 with nothing
+      # listening on it internally is harmless but pointless. Maps to the
+      # container's internal 8443, not 443 - see nginx.conf's own comment
+      # for why (this container never listens on a privileged port at all).
+      # - "443:8443"
+    # Add a fourth entry to the `volumes:` list above (read-only) once
+    # you enable HTTPS at this nginx:
+    #   - /path/to/your/certs:/etc/nginx/certs:ro
+    depends_on:
+      backend:
+        condition: service_healthy

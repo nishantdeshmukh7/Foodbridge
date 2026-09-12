@@ -1,3 +1,14 @@
+# Phase 19: this stack is local/CI-only, not a production deployment
+# configuration - it hardcodes NODE_ENV: development for the backend
+# service (on purpose - it's meant to behave like local dev), bakes a
+# clearly-labeled non-secret JWT_SECRET inline, runs Postgres in an
+# ephemeral container, and bundles a local monitoring stack (Prometheus/
+# Grafana/cAdvisor) with default credentials and no network isolation -
+# none of which belong in a real deployment. For an actual production-style
+# deployment, use docker-compose.prod.yml, which sources every secret from
+# the environment (see .env.production.example) and sets
+# NODE_ENV=production explicitly and unconditionally, rather than relying
+# on a developer remembering to change a hardcoded value here.
 services:
   db:
     image: postgres:15-alpine
@@ -7,7 +18,15 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: foodbridge
     ports:
-      - "5433:5432"
+      # Phase 27: loopback-only, same reasoning/precedent as the
+      # prometheus/grafana/cadvisor bindings below - convenient for a
+      # developer connecting a local Postgres client to localhost:5433,
+      # not reachable from another machine on the same network merely by
+      # running this compose file somewhere other than a personal laptop.
+      # The backend service itself never uses this published port at all -
+      # it reaches Postgres via the internal Docker network (db:5432),
+      # completely independent of this binding.
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -25,7 +44,10 @@ services:
       - "4000:3001"
     environment:
       DATABASE_URL: postgresql://postgres:password@db:5432/foodbridge?schema=public
-      JWT_SECRET: development_secret_key
+      # CI/local-compose only - not a real secret, but long and random enough
+      # to pass the app's startup validation (see backend/src/config/index.ts).
+      # Never reuse this value outside this disposable compose stack.
+      JWT_SECRET: ci-compose-nonprod-3f8a1c9e6b2d4f7a0e5c8b1d9f2a4e7c6b3d0f9a2e5c8b1d4f7a0e3c6b9d2f5a
       PORT: 3001
       NODE_ENV: development
       FRONTEND_URL: http://localhost:5174
@@ -46,6 +68,16 @@ services:
     depends_on:
       - backend
 
+  # Phase 21: this monitoring trio (prometheus/grafana/cadvisor) is local/CI
+  # observability tooling, not part of the application, and not part of a
+  # real deployment - docker-compose.prod.yml intentionally does not
+  # include it. Two changes this phase: (1) all three now bind only to
+  # 127.0.0.1, not every network interface - "docker compose up" on a
+  # laptop still reaches them at the same localhost:PORT URLs as before,
+  # but they are no longer reachable from another machine on the same
+  # network/cloud VM's public interface merely by someone running this
+  # file somewhere other than a personal laptop; (2) Grafana no longer
+  # ships a hardcoded admin/admin - see below.
   prometheus:
     image: prom/prometheus:latest
     container_name: foodbridge-prometheus
@@ -53,7 +85,7 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     depends_on:
       - cadvisor
 
@@ -61,27 +93,69 @@ services:
     image: grafana/grafana:latest
     container_name: foodbridge-grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # No hardcoded default - GRAFANA_ADMIN_PASSWORD must be set (e.g. in
+      # a local .env file, gitignored, never committed) before this
+      # service will start with a real password. The username keeping a
+      # default is fine (usernames aren't secrets); the password
+      # previously defaulting to the literal string "admin" is what made
+      # this an actual finding, not local convenience.
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in a local .env file before starting the monitoring stack - see README.md}
     volumes:
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
 
+  # Phase 21 left `privileged: true` in place, unresolved, because no
+  # running Docker daemon was available at the time to empirically verify
+  # a reduced-privilege alternative against. Phase 28 had a real Docker
+  # host and actually tested it: ran cAdvisor standalone (same volume
+  # mounts as below) twice - once with `privileged: true` (baseline),
+  # once with `cap_drop: ALL` plus only SYS_ADMIN/SYS_PTRACE/
+  # DAC_READ_SEARCH added back and no-new-privileges set - and compared
+  # /metrics output. The reduced-privilege run reported the same "enabled
+  # metrics" set (app,cpu,cpuLoad,disk,diskIO,memory,network,oom_event,
+  # percpu,perf_event,pressure), the same machine_* info line count, and
+  # full per-container CPU/memory metrics for every real container on the
+  # host - no observed gap in what cAdvisor could report. On that basis,
+  # this service now runs unprivileged with an explicit, minimal
+  # capability set instead.
+  #
+  # Residual risk, stated plainly rather than glossed over: this was
+  # verified on one specific host (Docker Desktop for Mac, this
+  # environment's actual kernel/cgroup setup) - cAdvisor's own docs and
+  # issue tracker note that the exact minimum capability set can be
+  # kernel/cgroup-version-dependent, so a genuinely different host
+  # (different Linux distro, cgroup v1 vs v2, a managed CI runner) could
+  # in principle need something back. If you run this stack somewhere
+  # else and see gaps in http://localhost:8080/metrics compared to what's
+  # documented above, that's the first thing to suspect - re-add the
+  # specific missing capability, don't reach for `privileged: true` as a
+  # blanket fix. This stack is dev/CI-only regardless (see this file's own
+  # header comment) - it is never part of docker-compose.prod.yml - so
+  # the blast radius of getting this wrong is a developer's own machine,
+  # not production.
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: foodbridge-cadvisor
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
-    privileged: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_ADMIN
+      - SYS_PTRACE
+      - DAC_READ_SEARCH
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   postgres_data:
