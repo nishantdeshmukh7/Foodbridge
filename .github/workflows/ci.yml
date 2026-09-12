@@ -61,9 +61,22 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    # Only the db/backend/frontend services below are actually exercised by
+    # this job (health-check curls, then Trivy scans of the backend/frontend
+    # images) - the prometheus/grafana/cadvisor trio is local/CI
+    # observability tooling, not part of the application (see
+    # docker-compose.yml's own header comment). `docker compose` still
+    # interpolates every service's environment up front, before filtering to
+    # the requested service names, for BOTH `up` and `down` - so Grafana's
+    # required GRAFANA_ADMIN_PASSWORD (deliberately no default - Phase 21
+    # hardening) must be set for the whole job even though grafana itself is
+    # never started here; this is a disposable CI-only value, never a real
+    # credential.
+    env:
+      GRAFANA_ADMIN_PASSWORD: ci-only-unused-value-grafana-not-started
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose up -d --build
+      - run: docker compose up -d --build db backend frontend
       - run: sleep 10
       - name: Test Backend
         run: curl -f http://localhost:4000/health || exit 1
