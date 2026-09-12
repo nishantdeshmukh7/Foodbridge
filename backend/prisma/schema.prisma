@@ -44,6 +44,33 @@ enum DeliveryStatus {
   COMPLETED
 }
 
+// Phase 11: one flat taxonomy covering every event that actually notifies
+// someone today. Named after the domain's own state-machine vocabulary
+// (DonationStatus/RequestStatus) rather than generic "info/alert" levels,
+// so the type alone tells the frontend which icon/destination applies.
+enum NotificationType {
+  DONATION_CLAIMED
+  DONATION_CANCELLED
+  // Phase 12: distinct from DONATION_CANCELLED - the donation is back to
+  // AVAILABLE, not terminated, so "cancelled" would be the wrong word for
+  // the donor reading this notification.
+  DONATION_RELEASED
+  PICKUP_ASSIGNED
+  PICKUP_ACCEPTED
+  PICKUP_STARTED
+  DELIVERY_COMPLETED
+  USER_APPROVED
+  USER_REJECTED
+  USER_SUSPENDED
+  USER_REACTIVATED
+  // Phase 13: security notification on a successful password reset - not
+  // a workflow event, but cheap and valuable given the existing
+  // notification infrastructure, and the one place a legitimate user
+  // would notice an unauthorized reset if their session is still active
+  // elsewhere.
+  PASSWORD_RESET
+}
+
 // Models
 model User {
   id            String    @id @default(cuid())
@@ -58,12 +85,24 @@ model User {
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  // Phase 13: null until the first password reset. Used by the auth
+  // middleware to reject a JWT issued before the most recent password
+  // change (compared against the token's own `iat` claim) - the closest
+  // this stateless-JWT design can get to "logging out other sessions" on
+  // reset. See middleware/auth.ts.
+  passwordChangedAt DateTime?
 
   // Relations
   donations     Donation[]      @relation("DonorDonations")
   claims        Donation[]      @relation("NgoClaims")
   pickups       PickupRequest[] @relation("VolunteerPickups")
-  adminLogs     AdminLog[]
+  // Phase 20: split into two named relations now that AdminLog has two
+  // distinct references to User - see AdminLog.userId/actorId below for
+  // what each one means.
+  adminLogSubjectOf AdminLog[]  @relation("AdminLogSubject")
+  adminActions      AdminLog[]  @relation("AdminLogActor")
+  notifications Notification[]
+  passwordResetTokens PasswordResetToken[]
 }
 
 model Donation {
@@ -126,9 +165,49 @@ model AdminLog {
   action      String
   details     String?
   level       String    @default("info") // info, warning, error, success
+  // The subject: the user this entry is ABOUT (e.g. the account that was
+  // approved/suspended, or a cancelled donation's donor). Existing
+  // convention from every writer prior to Phase 20 - unchanged.
   userId      String?
-  user        User?     @relation(fields: [userId], references: [id])
+  user        User?     @relation("AdminLogSubject", fields: [userId], references: [id])
+  // Phase 20: the actor - the admin who performed the action - as a real,
+  // queryable, indexed foreign key, rather than only free text inside
+  // `details` (the pre-Phase-20 convention, which every writer still also
+  // populates for human-readable continuity). Nullable so existing rows
+  // written before this field existed remain valid and readable; no
+  // historical row is ever backfilled with a guessed actor. Always
+  // populated going forward from the authenticated request's own JWT/user
+  // context - never from client-supplied input.
+  actorId     String?
+  actor       User?     @relation("AdminLogActor", fields: [actorId], references: [id])
   createdAt   DateTime  @default(now())
+
+  @@index([actorId])
+}
+
+// Durable in-app notification (Phase 11). donationId/pickupRequestId are
+// plain, unconstrained references (not Prisma relations) - deliberately:
+// they exist purely so the frontend can link back to "the relevant
+// donation/pickup", and a notification must never be able to block or be
+// broken by the lifecycle of the entity it merely refers to (e.g. a DONOR
+// hard-deleting an AVAILABLE donation, per donationService.delete).
+model Notification {
+  id              String            @id @default(cuid())
+  recipientId     String
+  recipient       User              @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  type            NotificationType
+  title           String
+  message         String
+  isRead          Boolean           @default(false)
+  donationId      String?
+  pickupRequestId String?
+  createdAt       DateTime          @default(now())
+
+  // Every query this table actually serves: "this user's notifications,
+  // newest first" (list) and "this user's unread count" (badge) - both
+  // covered by one composite index each, nothing broader.
+  @@index([recipientId, createdAt])
+  @@index([recipientId, isRead])
 }
 
 // Indexes for performance
@@ -138,5 +217,33 @@ model Verification {
   code      String
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+// Phase 13: password reset. A dedicated model rather than reusing
+// Verification above - that model is keyed by email (not userId), has no
+// used/consumed state, and no type discriminator, so it doesn't safely
+// fit a single-use, per-user reset credential; it's left untouched here,
+// still reserved for a possible future email-verification feature.
+//
+// tokenHash is a SHA-256 hex digest of a 256-bit random token generated
+// with crypto.randomBytes() - the raw token itself is never stored, only
+// ever exists transiently in memory and in the (dev-only, see
+// email.service.ts) delivery mechanism. A fast hash is appropriate here
+// (unlike User.password's bcrypt) because the input is already
+// high-entropy and random, not a human-chosen secret to defend against
+// dictionary attacks.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  // Every query this table serves: exact lookup by tokenHash (covered by
+  // its own @unique index above) and "this user's outstanding tokens"
+  // when invalidating previous ones on a new request.
+  @@index([userId])
 }
 

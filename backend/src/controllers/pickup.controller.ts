@@ -3,23 +3,6 @@ import { pickupService } from '../services/pickup.service.js';
 import { AuthRequest } from '../middleware/auth.js';
 
 export const pickupController = {
-  async createPickupRequest(req: AuthRequest, res: Response) {
-    try {
-      const donationId = req.body.donationId as string;
-      
-      if (!donationId) {
-        res.status(400).json({ error: 'Donation ID required' });
-        return;
-      }
-
-      const pickup = await pickupService.createPickupRequest(donationId);
-      res.status(201).json(pickup);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create pickup request';
-      res.status(400).json({ error: message });
-    }
-  },
-
   async assignVolunteer(req: AuthRequest, res: Response) {
     try {
       const pickupRequestId = req.params.pickupRequestId as string;
@@ -110,16 +93,34 @@ export const pickupController = {
     }
   },
 
+  // Unlike donations, a pickup detail isn't a public marketplace listing -
+  // it's an operational record between three specific parties (the donor,
+  // the claiming NGO, and the assigned volunteer), plus Admin. The route
+  // requires authenticate() (see pickup.routes.ts), so req.user is always
+  // set here; anyone authenticated but unrelated to this pickup gets a
+  // clean 403 with no data at all, rather than a redacted-but-visible
+  // response - there's no legitimate "browse other people's pickups" case.
   async getById(req: AuthRequest, res: Response) {
     try {
       const pickupRequestId = req.params.pickupRequestId as string;
       const pickup = await pickupService.getById(pickupRequestId);
-      
+
       if (!pickup) {
         res.status(404).json({ error: 'Pickup request not found' });
         return;
       }
-      
+
+      const isRelated =
+        req.user!.role === 'ADMIN' ||
+        req.user!.id === pickup.donation.donorId ||
+        req.user!.id === pickup.donation.claimedById ||
+        req.user!.id === pickup.volunteerId;
+
+      if (!isRelated) {
+        res.status(403).json({ error: 'Not authorized to view this pickup' });
+        return;
+      }
+
       res.json(pickup);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to get pickup';

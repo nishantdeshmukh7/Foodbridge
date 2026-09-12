@@ -29,12 +29,16 @@ export const donationController = {
     }
   },
 
-  async getAll(req: Request, res: Response) {
+  // req: AuthRequest, not Request - optionalAuth (see donation.routes.ts)
+  // populates req.user when a token is present without requiring one, and
+  // donationService uses it to decide whether donor.phone belongs in the
+  // response (see canSeeDonorContact in donation.service.ts).
+  async getAll(req: AuthRequest, res: Response) {
     try {
       const status = req.query.status as string | undefined;
       const foodType = req.query.foodType as string | undefined;
       const location = req.query.location as string | undefined;
-      const donations = await donationService.getAll({ status, foodType, location });
+      const donations = await donationService.getAll({ status, foodType, location }, req.user);
       res.json(donations);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to get donations';
@@ -42,16 +46,16 @@ export const donationController = {
     }
   },
 
-  async getById(req: Request, res: Response) {
+  async getById(req: AuthRequest, res: Response) {
     try {
       const id = req.params.id as string;
-      const donation = await donationService.getById(id);
-      
+      const donation = await donationService.getById(id, req.user);
+
       if (!donation) {
         res.status(404).json({ error: 'Donation not found' });
         return;
       }
-      
+
       res.json(donation);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to get donation';
@@ -65,6 +69,19 @@ export const donationController = {
       res.json(donations);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to get donations';
+      res.status(400).json({ error: message });
+    }
+  },
+
+  // Phase 12.5: NGO-only, self-scoped - req.user!.id is the only "which
+  // NGO" input, never a client-supplied id or query param.
+  async getMyClaims(req: AuthRequest, res: Response) {
+    try {
+      const status = req.query.status as string | undefined;
+      const donations = await donationService.getByClaimant(req.user!.id, { status });
+      res.json(donations);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to get claims';
       res.status(400).json({ error: message });
     }
   },
@@ -86,33 +103,35 @@ export const donationController = {
     }
   },
 
-  async updateStatus(req: AuthRequest, res: Response) {
+  // Explicit semantic endpoint (Phase 12) rather than a generic
+  // status-mutation route - the only two things a client sends are which
+  // donation and its own credentials; donationService.cancel() alone
+  // decides whether that's legal from the current state.
+  async cancel(req: AuthRequest, res: Response) {
     try {
       const id = req.params.id as string;
-      const status = req.body.status as string;
-
-      const donation = await donationService.updateStatus(
-        id,
-        status,
-        req.user!.id,
-        req.user!.role,
-      );
+      const donation = await donationService.cancel(id, {
+        id: req.user!.id,
+        role: req.user!.role,
+        email: req.user!.email,
+      });
       res.json(donation);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update donation';
-      // Return 403 when the service throws an authorization error.
-      const statusCode = message === 'Not authorized to update this donation' ? 403 : 400;
-      res.status(statusCode).json({ error: message });
+      const message = error instanceof Error ? error.message : 'Failed to cancel donation';
+      res.status(400).json({ error: message });
     }
   },
 
-  async delete(req: AuthRequest, res: Response) {
+  // NGO-facing counterpart to cancel() (Phase 12): releases a claim back
+  // onto the market. req.user!.id is the only "which NGO" input - never a
+  // client-supplied claimedById.
+  async releaseClaim(req: AuthRequest, res: Response) {
     try {
       const id = req.params.id as string;
-      const result = await donationService.delete(id, req.user!.id);
-      res.json(result);
+      const donation = await donationService.releaseClaim(id, req.user!.id);
+      res.json(donation);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to delete donation';
+      const message = error instanceof Error ? error.message : 'Failed to release claim';
       res.status(400).json({ error: message });
     }
   },
