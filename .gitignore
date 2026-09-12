@@ -15,6 +15,7 @@ dist-ssr
 # Environment variables
 .env
 .env.local
+.env.production
 .env.production.local
 .env.development.local
 .env.test.local
@@ -36,6 +37,12 @@ bun.lockb
 # Test coverage
 coverage
 
+# Playwright output (Playwright itself is not currently used in this repo -
+# kept in case it's ever reintroduced, so its output never gets committed)
+test-results/
+playwright-report/
+blob-report/
+
 # Misc
 *.tgz
 
@@ -43,3 +50,11 @@ coverage
 postgres_data/
 prometheus_data/
 grafana_data/
+
+# Phase 26: database backups. A pg_dump archive contains every user's
+# data, including password hashes and password-reset token hashes - it
+# must never be committed, regardless of where it's produced. *.dump is
+# belt-and-suspenders in case one ever ends up outside these directories.
+backups/
+backend/backups/
+*.dump
