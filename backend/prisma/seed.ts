@@ -3,6 +3,29 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+// Phase 18: this script creates well-known accounts (admin@foodbridge.com
+// among them) with hardcoded, previously-published passwords - fine for a
+// disposable local/CI database, catastrophic against a real one. Nothing
+// upstream of this file guarantees it only ever runs in development (no
+// postinstall/prepare hook calls it today, but a deploy script or a
+// copy-pasted onboarding step could), so the guard lives here, at the one
+// point every invocation must pass through, and does not depend on the
+// target database happening to look empty.
+function assertNotProduction(): void {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: refusing to run the development seed script with NODE_ENV=production.');
+    console.error(
+      'This script creates accounts with known, previously-published passwords ' +
+        '(including an ADMIN account) - it must never run against a real database.'
+    );
+    console.error('If you actually need to seed a production database, do so deliberately and');
+    console.error('separately, with unique, non-public credentials - not via `npm run db:seed`.');
+    process.exit(1);
+  }
+}
+
+assertNotProduction();
+
 async function main() {
   console.log('🌱 Seeding database...');
 

@@ -44,7 +44,7 @@ export const userController = {
   async approveUser(req: AuthRequest, res: Response) {
     try {
       const id = req.params.id as string;
-      const user = await userService.approveUser(id);
+      const user = await userService.approveUser(id, req.user!.id);
       res.json(user);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to approve user';
@@ -55,7 +55,7 @@ export const userController = {
   async rejectUser(req: AuthRequest, res: Response) {
     try {
       const id = req.params.id as string;
-      const result = await userService.rejectUser(id);
+      const result = await userService.rejectUser(id, req.user!.id);
       res.json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to reject user';
@@ -66,7 +66,7 @@ export const userController = {
   async suspendUser(req: AuthRequest, res: Response) {
     try {
       const id = req.params.id as string;
-      const user = await userService.suspendUser(id);
+      const user = await userService.suspendUser(id, req.user!.id);
       res.json(user);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to suspend user';
@@ -77,7 +77,7 @@ export const userController = {
   async activateUser(req: AuthRequest, res: Response) {
     try {
       const id = req.params.id as string;
-      const user = await userService.activateUser(id);
+      const user = await userService.activateUser(id, req.user!.id);
       res.json(user);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to activate user';
