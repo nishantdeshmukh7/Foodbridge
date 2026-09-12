@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
+import Profile from "@/pages/Profile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,10 +10,21 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line, PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
-import { usersApi, donationsApi, User, UserStats, DonationStats } from "@/api";
-import { Users, Package, Truck, TrendingUp, Search, CheckCircle, XCircle, Shield, Activity, AlertTriangle, Loader2 } from "lucide-react";
+import {
+  usersApi,
+  pickupsApi,
+  adminApi,
+  healthApi,
+  donationsApi,
+  User,
+  PickupRequest,
+  Donation,
+  AdminAnalytics,
+  AdminActivityEntry,
+} from "@/api";
+import { Users, Package, Truck, TrendingUp, Search, CheckCircle, XCircle, Activity, AlertTriangle, Loader2, UserCheck, Clock, ServerCog, Ban } from "lucide-react";
 
 const chartConfig = {
   meals: { label: "Meals Saved", color: "hsl(27, 97%, 54%)" },
@@ -41,18 +53,13 @@ function StatCard({ label, value, icon: Icon, accent = false, trend }: { label: 
 function Overview() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
-  const { data: userStats, isLoading: loadingUsers } = useQuery({
-    queryKey: ['admin-user-stats'],
-    queryFn: () => usersApi.getStats(),
+
+  const { data: analyticsData, isLoading: loadingAnalytics, isError: analyticsError } = useQuery({
+    queryKey: ['admin-analytics'],
+    queryFn: () => adminApi.getAnalytics(),
   });
 
-  const { data: donationStats, isLoading: loadingDonations } = useQuery({
-    queryKey: ['admin-donation-stats'],
-    queryFn: () => donationsApi.getStats(),
-  });
-
-  const { data: pendingUsers = [], isLoading: loadingPending } = useQuery({
+  const { data: pendingUsers = [], isLoading: loadingPending, isError: pendingError } = useQuery({
     queryKey: ['pending-users'],
     queryFn: () => usersApi.getPending(),
   });
@@ -61,7 +68,7 @@ function Overview() {
     mutationFn: (id: string) => usersApi.approve(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-users'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-user-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-analytics'] });
       toast({ title: "Success", description: "User approved successfully" });
     },
     onError: (error: Error) => {
@@ -73,6 +80,7 @@ function Overview() {
     mutationFn: (id: string) => usersApi.reject(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-users'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-analytics'] });
       toast({ title: "Success", description: "User rejected" });
     },
     onError: (error: Error) => {
@@ -80,20 +88,9 @@ function Overview() {
     },
   });
 
-  const isLoading = loadingUsers || loadingDonations || loadingPending;
-  const stats = userStats as UserStats | undefined;
-  const dStats = donationStats as DonationStats | undefined;
+  const isLoading = loadingAnalytics || loadingPending;
+  const analytics = analyticsData as AdminAnalytics | undefined;
   const pending = pendingUsers as User[];
-
-  // Mock chart data (in production, this would come from API)
-  const monthlyData = [
-    { month: "Jan", meals: 240, pickups: 18 },
-    { month: "Feb", meals: 310, pickups: 22 },
-    { month: "Mar", meals: 280, pickups: 19 },
-    { month: "Apr", meals: 420, pickups: 31 },
-    { month: "May", meals: 380, pickups: 28 },
-    { month: "Jun", meals: 510, pickups: 39 },
-  ];
 
   if (isLoading) {
     return (
@@ -103,50 +100,59 @@ function Overview() {
     );
   }
 
+  // Never fall through to a zero-filled dashboard on failure - that would
+  // be indistinguishable from a genuinely empty database.
+  if (analyticsError || pendingError || !analytics) {
+    return (
+      <Card className="border-destructive">
+        <CardContent className="p-8 text-center">
+          <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-destructive" />
+          <p className="font-medium">Failed to load analytics</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            The admin analytics service did not respond. Try refreshing the page.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Every bar reflects a real donation count from the database, including
+  // statuses currently at zero (e.g. EXPIRED has no writer yet) - a real
+  // zero is still real data, not a placeholder.
+  const donationStatusData = [
+    { status: "Available", count: analytics.donations.available },
+    { status: "Claimed", count: analytics.donations.claimed },
+    { status: "Picked Up", count: analytics.donations.pickedUp },
+    { status: "Delivered", count: analytics.donations.delivered },
+    { status: "Expired", count: analytics.donations.expired },
+    { status: "Cancelled", count: analytics.donations.cancelled },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Total Users" value={stats?.total || 0} icon={Users} accent trend="12%" />
-        <StatCard label="Total Donations" value={dStats?.total || 0} icon={Package} trend="8%" />
-        <StatCard label="Delivered" value={dStats?.delivered || 0} icon={Truck} />
-        <StatCard label="Pending Approval" value={stats?.pendingApprovals || pending?.length || 0} icon={TrendingUp} />
+        <StatCard label="Total Users" value={analytics.users.total} icon={Users} accent />
+        <StatCard label="Total Donations" value={analytics.donations.total} icon={Package} />
+        <StatCard label="Delivered" value={analytics.donations.delivered} icon={Truck} />
+        <StatCard label="Pending Approval" value={analytics.users.pendingApprovals} icon={TrendingUp} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm uppercase tracking-wider">Donations — Monthly</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={chartConfig} className="h-[250px] w-full">
-              <BarChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="month" className="text-xs" />
-                <YAxis className="text-xs" />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="meals" fill="hsl(27, 97%, 54%)" />
-              </BarChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm uppercase tracking-wider">Pickups — Trend</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={chartConfig} className="h-[250px] w-full">
-              <LineChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="month" className="text-xs" />
-                <YAxis className="text-xs" />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Line type="monotone" dataKey="pickups" stroke="hsl(0, 0%, 20%)" strokeWidth={2} dot={{ r: 4 }} />
-              </LineChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm uppercase tracking-wider">Donations by Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ChartContainer config={chartConfig} className="h-[250px] w-full">
+            <BarChart data={donationStatusData}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="status" className="text-xs" />
+              <YAxis className="text-xs" allowDecimals={false} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Bar dataKey="count" fill="hsl(27, 97%, 54%)" />
+            </BarChart>
+          </ChartContainer>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-2">
@@ -163,18 +169,18 @@ function Overview() {
                   <p className="text-xs text-muted-foreground">{user.email} · {user.role}</p>
                 </div>
                 <div className="flex gap-1">
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
+                  <Button
+                    size="sm"
+                    variant="ghost"
                     className="h-7 text-xs"
                     onClick={() => approveMutation.mutate(user.id)}
                     disabled={approveMutation.isPending}
                   >
                     <CheckCircle className="w-3.5 h-3.5 mr-1" /> Approve
                   </Button>
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
+                  <Button
+                    size="sm"
+                    variant="ghost"
                     className="h-7 text-xs text-destructive"
                     onClick={() => rejectMutation.mutate(user.id)}
                     disabled={rejectMutation.isPending}
@@ -191,6 +197,24 @@ function Overview() {
   );
 }
 
+// The authoritative user lifecycle, derived entirely from the existing
+// (isApproved, isActive) pair - see backend/src/services/user.service.ts for
+// the matching backend definition. Kept in one place so the badge and the
+// available actions can never disagree with each other.
+type LifecycleStatus = "pending" | "rejected" | "active" | "suspended";
+
+function lifecycleStatus(user: User): LifecycleStatus {
+  if (!user.isApproved) return user.isActive ? "pending" : "rejected";
+  return user.isActive ? "active" : "suspended";
+}
+
+const lifecycleBadgeClass: Record<LifecycleStatus, string> = {
+  pending: "bg-primary text-primary-foreground",
+  rejected: "bg-destructive text-destructive-foreground",
+  active: "bg-foreground text-background",
+  suspended: "bg-muted text-muted-foreground border border-border",
+};
+
 function UserManagement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -199,7 +223,7 @@ function UserManagement() {
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['all-users', roleFilter, searchTerm],
-    queryFn: () => usersApi.getAll({ 
+    queryFn: () => usersApi.getAll({
       role: roleFilter === 'all' ? undefined : roleFilter,
       search: searchTerm || undefined,
     }),
@@ -221,6 +245,7 @@ function UserManagement() {
     mutationFn: (id: string) => usersApi.reject(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-users'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-users'] });
       toast({ title: "Success", description: "User rejected" });
     },
     onError: (error: Error) => {
@@ -233,6 +258,28 @@ function UserManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-users'] });
       toast({ title: "Success", description: "User suspended" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Reactivating a REJECTED account (isApproved=false) returns it to
+  // PENDING for re-review, not straight to ACTIVE - see
+  // userService.activateUser. wasRejected travels with the mutation
+  // variables so onSuccess can phrase the toast correctly without a stale
+  // read of the pre-mutation user list.
+  const reactivateMutation = useMutation({
+    mutationFn: ({ id }: { id: string; wasRejected: boolean }) => usersApi.activate(id),
+    onSuccess: (_data, { wasRejected }) => {
+      queryClient.invalidateQueries({ queryKey: ['all-users'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-users'] });
+      toast({
+        title: "Success",
+        description: wasRejected
+          ? "User reactivated - back in the pending approval queue"
+          : "User reactivated",
+      });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -292,53 +339,74 @@ function UserManagement() {
                   <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs uppercase">{user.role}</Badge></TableCell>
                   <TableCell>
-                    <Badge className={`text-xs uppercase ${
-                      !user.isApproved ? "bg-primary text-primary-foreground" : 
-                      user.isActive ? "bg-foreground text-background" : 
-                      "bg-destructive text-destructive-foreground"
-                    }`}>
-                      {!user.isApproved ? "pending" : user.isActive ? "active" : "suspended"}
-                    </Badge>
+                    {(() => {
+                      const status = lifecycleStatus(user);
+                      return (
+                        <Badge className={`text-xs uppercase ${lifecycleBadgeClass[status]}`}>
+                          {status}
+                        </Badge>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground font-mono">
                     {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
-                      {!user.isApproved && (
-                        <>
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            className="h-7 text-xs"
-                            onClick={() => approveMutation.mutate(user.id)}
-                            disabled={approveMutation.isPending}
-                          >
-                            <CheckCircle className="w-3.5 h-3.5 mr-1" /> Approve
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
+                    {user.role === 'ADMIN' ? (
+                      <span className="text-xs text-muted-foreground">&mdash;</span>
+                    ) : (
+                      <div className="flex gap-1">
+                        {lifecycleStatus(user) === "pending" && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs"
+                              onClick={() => approveMutation.mutate(user.id)}
+                              disabled={approveMutation.isPending}
+                            >
+                              <CheckCircle className="w-3.5 h-3.5 mr-1" /> Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs text-destructive"
+                              onClick={() => rejectMutation.mutate(user.id)}
+                              disabled={rejectMutation.isPending}
+                            >
+                              <XCircle className="w-3.5 h-3.5 mr-1" /> Reject
+                            </Button>
+                          </>
+                        )}
+                        {lifecycleStatus(user) === "active" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
                             className="h-7 text-xs text-destructive"
-                            onClick={() => rejectMutation.mutate(user.id)}
-                            disabled={rejectMutation.isPending}
+                            onClick={() => suspendMutation.mutate(user.id)}
+                            disabled={suspendMutation.isPending}
                           >
-                            <XCircle className="w-3.5 h-3.5" />
+                            Suspend
                           </Button>
-                        </>
-                      )}
-                      {user.isApproved && user.isActive && (
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          className="h-7 text-xs text-destructive"
-                          onClick={() => suspendMutation.mutate(user.id)}
-                          disabled={suspendMutation.isPending}
-                        >
-                          Suspend
-                        </Button>
-                      )}
-                    </div>
+                        )}
+                        {(lifecycleStatus(user) === "suspended" || lifecycleStatus(user) === "rejected") && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs"
+                            onClick={() =>
+                              reactivateMutation.mutate({
+                                id: user.id,
+                                wasRejected: lifecycleStatus(user) === "rejected",
+                              })
+                            }
+                            disabled={reactivateMutation.isPending}
+                          >
+                            <UserCheck className="w-3.5 h-3.5 mr-1" /> Reactivate
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -351,35 +419,14 @@ function UserManagement() {
 }
 
 function Analytics() {
-  const { data: userStats, isLoading: loadingUsers } = useQuery({
-    queryKey: ['admin-user-stats'],
-    queryFn: () => usersApi.getStats(),
+  const { data: analyticsData, isLoading, isError } = useQuery({
+    queryKey: ['admin-analytics'],
+    queryFn: () => adminApi.getAnalytics(),
   });
 
-  const { data: donationStats, isLoading: loadingDonations } = useQuery({
-    queryKey: ['admin-donation-stats'],
-    queryFn: () => donationsApi.getStats(),
-  });
+  const analytics = analyticsData as AdminAnalytics | undefined;
 
-  const stats = userStats as UserStats | undefined;
-  const dStats = donationStats as DonationStats | undefined;
-
-  const roleDistribution = [
-    { name: "Donors", value: stats?.donors || 0, fill: "hsl(27, 97%, 54%)" },
-    { name: "NGOs", value: stats?.ngos || 0, fill: "hsl(0, 0%, 20%)" },
-    { name: "Volunteers", value: stats?.volunteers || 0, fill: "hsl(0, 0%, 60%)" },
-  ];
-
-  const monthlyData = [
-    { month: "Jan", meals: 240, pickups: 18 },
-    { month: "Feb", meals: 310, pickups: 22 },
-    { month: "Mar", meals: 280, pickups: 19 },
-    { month: "Apr", meals: 420, pickups: 31 },
-    { month: "May", meals: 380, pickups: 28 },
-    { month: "Jun", meals: 510, pickups: 39 },
-  ];
-
-  if (loadingUsers || loadingDonations) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin" />
@@ -387,29 +434,60 @@ function Analytics() {
     );
   }
 
+  if (isError || !analytics) {
+    return (
+      <Card className="border-destructive">
+        <CardContent className="p-8 text-center">
+          <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-destructive" />
+          <p className="font-medium">Failed to load analytics</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            The admin analytics service did not respond. Try refreshing the page.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const roleDistribution = [
+    { name: "Donors", value: analytics.users.donors, fill: "hsl(27, 97%, 54%)" },
+    { name: "NGOs", value: analytics.users.ngos, fill: "hsl(0, 0%, 20%)" },
+    { name: "Volunteers", value: analytics.users.volunteers, fill: "hsl(0, 0%, 60%)" },
+  ];
+
+  // Every bar is a real PickupRequest.status count. REJECTED/CANCELLED are
+  // included even though no current code path ever sets them - that is a
+  // truthful zero, not a gap in the query.
+  const pickupStatusData = [
+    { status: "Pending", count: analytics.pickups.pending },
+    { status: "Accepted", count: analytics.pickups.accepted },
+    { status: "Picked Up", count: analytics.pickups.pickedUp },
+    { status: "Completed", count: analytics.pickups.completed },
+    { status: "Rejected", count: analytics.pickups.rejected },
+    { status: "Cancelled", count: analytics.pickups.cancelled },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Total Donations" value={dStats?.total || 0} icon={Package} accent />
-        <StatCard label="Delivered" value={dStats?.delivered || 0} icon={Truck} />
-        <StatCard label="Available" value={dStats?.available || 0} icon={Users} />
-        <StatCard label="Urgent" value={dStats?.urgent || 0} icon={TrendingUp} />
+        <StatCard label="Total Donations" value={analytics.donations.total} icon={Package} accent />
+        <StatCard label="Delivered" value={analytics.donations.delivered} icon={Truck} />
+        <StatCard label="Available" value={analytics.donations.available} icon={Users} />
+        <StatCard label="Urgent (Available)" value={analytics.donations.urgentAvailable} icon={TrendingUp} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="md:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm uppercase tracking-wider">Monthly Performance</CardTitle>
+            <CardTitle className="text-sm uppercase tracking-wider">Pickups by Status</CardTitle>
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfig} className="h-[300px] w-full">
-              <BarChart data={monthlyData}>
+              <BarChart data={pickupStatusData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="month" />
-                <YAxis />
+                <XAxis dataKey="status" />
+                <YAxis allowDecimals={false} />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="meals" fill="hsl(27, 97%, 54%)" name="Meals" />
-                <Bar dataKey="pickups" fill="hsl(0, 0%, 20%)" name="Pickups" />
+                <Bar dataKey="count" fill="hsl(0, 0%, 20%)" name="Pickups" />
               </BarChart>
             </ChartContainer>
           </CardContent>
@@ -446,40 +524,129 @@ function Analytics() {
   );
 }
 
+function formatUptime(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function activityLevelClass(level: string): string {
+  if (level === "error") return "bg-destructive";
+  if (level === "warning") return "bg-primary";
+  if (level === "success") return "bg-foreground";
+  return "bg-muted-foreground";
+}
+
+// "Monitoring" here means a truthful operational snapshot, not APM/infra
+// telemetry the app doesn't actually export. Prometheus/cAdvisor (see
+// docker-compose.yml) only ever scrape container-level infra metrics, not
+// this application - nothing here claims otherwise. Every value is either
+// a real backend fact (process uptime and reachability via GET /health,
+// which this page also calls rather than inventing its own numbers) or a
+// real database aggregate reused from /api/admin/analytics.
 function Monitoring() {
-  // In a real app, this would come from a monitoring API
-  const systemLogs = [
-    { time: new Date().toLocaleTimeString(), event: "System Running", details: "All services operational", level: "success" },
-    { time: new Date(Date.now() - 60000).toLocaleTimeString(), event: "API Request", details: "Health check passed", level: "info" },
-    { time: new Date(Date.now() - 120000).toLocaleTimeString(), event: "Database", details: "Connection stable", level: "info" },
-    { time: new Date(Date.now() - 180000).toLocaleTimeString(), event: "Authentication", details: "JWT tokens validated", level: "info" },
-  ];
+  const { toast } = useToast();
+
+  const { data: analyticsData, isLoading: loadingAnalytics, isError: analyticsError } = useQuery({
+    queryKey: ['admin-analytics'],
+    queryFn: () => adminApi.getAnalytics(),
+  });
+
+  const { data: activityData, isLoading: loadingActivity, isError: activityError } = useQuery({
+    queryKey: ['admin-activity'],
+    queryFn: () => adminApi.getActivity(),
+  });
+
+  const {
+    data: health,
+    isLoading: loadingHealth,
+    isError: healthError,
+    refetch: refetchHealth,
+    isFetching: checkingHealth,
+  } = useQuery({
+    queryKey: ['api-health'],
+    queryFn: () => healthApi.check(),
+  });
+
+  const analytics = analyticsData as AdminAnalytics | undefined;
+  const activity = (activityData ?? []) as AdminActivityEntry[];
+
+  const handleHealthCheck = async () => {
+    const result = await refetchHealth();
+    if (result.data) {
+      toast({
+        title: "API is reachable",
+        description: `Status: ${result.data.status} · Uptime: ${formatUptime(result.data.uptimeSeconds)}`,
+      });
+    } else {
+      toast({ title: "Health check failed", description: "No response from the API.", variant: "destructive" });
+    }
+  };
+
+  const isLoading = loadingAnalytics || loadingActivity || loadingHealth;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Uptime" value="99.9%" icon={Activity} accent />
-        <StatCard label="Response" value="120ms" icon={TrendingUp} />
-        <StatCard label="Active Users" value="24" icon={Users} />
-        <StatCard label="Pending" value="3" icon={AlertTriangle} />
+        <StatCard
+          label="API Status"
+          value={healthError ? "Unreachable" : health?.status === "ok" ? "Operational" : "Unknown"}
+          icon={ServerCog}
+          accent={!healthError}
+        />
+        <StatCard label="Process Uptime" value={health ? formatUptime(health.uptimeSeconds) : "—"} icon={Clock} />
+        <StatCard
+          label="Pending Approvals"
+          value={analyticsError || !analytics ? "—" : analytics.users.pendingApprovals}
+          icon={AlertTriangle}
+        />
+        <StatCard
+          label="Unassigned Pickups"
+          value={analyticsError || !analytics ? "—" : analytics.pickups.pending}
+          icon={Package}
+        />
       </div>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm uppercase tracking-wider">System Logs</CardTitle>
+          <CardTitle className="text-sm uppercase tracking-wider">Recent Activity</CardTitle>
         </CardHeader>
         <CardContent className="space-y-0">
-          {systemLogs.map((log, i) => (
-            <div key={i} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
-              <span className="font-mono text-xs text-muted-foreground w-20 flex-shrink-0">{log.time}</span>
-              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${log.level === "error" ? "bg-destructive" : log.level === "warning" ? "bg-primary" : log.level === "success" ? "bg-foreground" : "bg-muted-foreground"}`} />
-              <Badge variant="outline" className={`text-[10px] uppercase w-16 justify-center flex-shrink-0 ${log.level === "error" ? "border-destructive text-destructive" : ""}`}>{log.level}</Badge>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{log.event}</p>
-                <p className="text-xs text-muted-foreground truncate">{log.details}</p>
+          {activityError ? (
+            <p className="text-center text-destructive py-4 text-sm">Failed to load recent activity.</p>
+          ) : activity.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4 text-sm">No admin activity recorded yet.</p>
+          ) : (
+            activity.map((log) => (
+              <div key={log.id} className="flex items-center gap-3 py-3 border-b border-border last:border-0">
+                <span className="font-mono text-xs text-muted-foreground w-16 flex-shrink-0">
+                  {new Date(log.createdAt).toLocaleTimeString()}
+                </span>
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${activityLevelClass(log.level)}`} />
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] uppercase w-16 justify-center flex-shrink-0 ${log.level === "error" ? "border-destructive text-destructive" : ""}`}
+                >
+                  {log.level}
+                </Badge>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{log.action}</p>
+                  {log.details && <p className="text-xs text-muted-foreground truncate">{log.details}</p>}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </CardContent>
       </Card>
 
@@ -487,35 +654,294 @@ function Monitoring() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm uppercase tracking-wider">Quick Actions</CardTitle>
         </CardHeader>
-      <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Button 
-            variant="outline" 
-            className="text-xs uppercase tracking-wider h-12"
-            onClick={() => alert('Security settings panel would open here')}
+        <CardContent>
+          <Button
+            variant="outline"
+            className="text-xs uppercase tracking-wider h-12 w-full sm:w-auto"
+            onClick={handleHealthCheck}
+            disabled={checkingHealth}
           >
-            <Shield className="w-4 h-4 mr-1" /> Security
+            {checkingHealth ? (
+              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+            ) : (
+              <Activity className="w-4 h-4 mr-1" />
+            )}
+            Run Health Check
           </Button>
-          <Button 
-            variant="outline" 
-            className="text-xs uppercase tracking-wider h-12"
-            onClick={() => alert('Health check would run here')}
-          >
-            <Activity className="w-4 h-4 mr-1" /> Health
-          </Button>
-          <Button 
-            variant="outline" 
-            className="text-xs uppercase tracking-wider h-12"
-            onClick={() => alert('Role management would open here')}
-          >
-            <Users className="w-4 h-4 mr-1" /> Roles
-          </Button>
-          <Button 
-            variant="outline" 
-            className="text-xs uppercase tracking-wider h-12 text-destructive border-destructive"
-            onClick={() => alert('System alerts would be shown here')}
-          >
-            <AlertTriangle className="w-4 h-4 mr-1" /> Alerts
-          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Canonical admin volunteer assignment. Lists PickupRequests an NGO claim
+// has already created (PENDING, unclaimed - the same list volunteers
+// self-serve from) and lets an admin pick an eligible volunteer for one.
+// This goes through the exact same PENDING -> ACCEPTED transition a
+// volunteer's own "Accept" does (see backend pickupService.assignVolunteer)
+// - it's a second entry point into one state machine, not a separate one.
+function Assignments() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [selectedVolunteer, setSelectedVolunteer] = useState<Record<string, string>>({});
+
+  const { data: pendingPickups = [], isLoading: loadingPickups } = useQuery({
+    queryKey: ['admin-pending-pickups'],
+    queryFn: () => pickupsApi.getAvailable(),
+  });
+
+  const { data: volunteers = [], isLoading: loadingVolunteers } = useQuery({
+    queryKey: ['admin-volunteers'],
+    queryFn: () => usersApi.getAll({ role: 'VOLUNTEER' }),
+  });
+
+  const eligibleVolunteers = (volunteers as User[]).filter((v) => v.isActive);
+
+  const assignMutation = useMutation({
+    mutationFn: ({ pickupRequestId, volunteerId }: { pickupRequestId: string; volunteerId: string }) =>
+      pickupsApi.assign(pickupRequestId, volunteerId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-pending-pickups'] });
+      setSelectedVolunteer((prev) => {
+        const next = { ...prev };
+        delete next[variables.pickupRequestId];
+        return next;
+      });
+      toast({ title: "Success", description: "Volunteer assigned to pickup" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const isLoading = loadingPickups || loadingVolunteers;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
+
+  const pickups = pendingPickups as PickupRequest[];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold uppercase tracking-wider">Assign Volunteers</h2>
+        <Badge variant="outline" className="text-xs uppercase">{pickups.length} pending</Badge>
+      </div>
+
+      {pickups.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <UserCheck className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+            <p className="text-muted-foreground">No pickups need assignment right now</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {pickups.map((pickup) => (
+            <Card key={pickup.id}>
+              <CardContent className="p-4 flex flex-col md:flex-row md:items-center gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold text-sm">{pickup.donation.foodType}</span>
+                    {pickup.donation.isUrgent && (
+                      <Badge variant="destructive" className="text-xs uppercase">URGENT</Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {pickup.donation.donor.name} &rarr; {pickup.donation.claimedBy?.name || 'NGO'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{pickup.donation.pickupLocation}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={selectedVolunteer[pickup.id] || ""}
+                    onValueChange={(value) =>
+                      setSelectedVolunteer((prev) => ({ ...prev, [pickup.id]: value }))
+                    }
+                  >
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Select volunteer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {eligibleVolunteers.length === 0 ? (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">No active volunteers</div>
+                      ) : (
+                        eligibleVolunteers.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    className="text-xs uppercase tracking-wider"
+                    disabled={!selectedVolunteer[pickup.id] || assignMutation.isPending}
+                    onClick={() =>
+                      assignMutation.mutate({
+                        pickupRequestId: pickup.id,
+                        volunteerId: selectedVolunteer[pickup.id],
+                      })
+                    }
+                  >
+                    {assignMutation.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      "Assign"
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const donationStatusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  AVAILABLE: "default",
+  CLAIMED: "secondary",
+  PICKED_UP: "outline",
+  DELIVERED: "outline",
+  EXPIRED: "destructive",
+  CANCELLED: "destructive",
+};
+
+// Client-side hint only, mirroring donationService.cancel()'s server-side
+// rule exactly (same helper as DonorDashboard's canCancelDonation - the
+// server independently re-checks this atomically, so a stale hint here
+// just means a clear conflict toast instead of a silently-wrong button).
+// Phase 12.5 made this identical for DONOR and ADMIN: AVAILABLE, or
+// CLAIMED with no volunteer accepted yet.
+function canAdminCancelDonation(donation: Donation): boolean {
+  if (donation.status === 'AVAILABLE') return true;
+  return donation.status === 'CLAIMED' && !donation.pickupRequest?.volunteerId;
+}
+
+function useAdminCancelDonation() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  // Same synchronous double-submit guard used for donor cancellation and
+  // NGO claim release (Phase 12) - a native confirm() blocks same-row
+  // re-clicks while open; this ref covers the gap between confirming and
+  // the mutation's own isPending reaching a re-render.
+  const inFlight = useRef<Set<string>>(new Set());
+
+  const mutation = useMutation({
+    mutationFn: (id: string) => donationsApi.cancel(id),
+    onSettled: (_data, _error, id) => {
+      inFlight.current.delete(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-donations'] });
+      toast({ title: "Donation cancelled", description: "The donation has been cancelled." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Cancellation failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const cancelDonation = (donation: Donation) => {
+    if (inFlight.current.has(donation.id)) return;
+    if (!confirm(`Cancel "${donation.foodType}" (from ${donation.donor.name})? This cannot be undone.`)) return;
+    inFlight.current.add(donation.id);
+    mutation.mutate(donation.id);
+  };
+
+  return { cancelDonation, isPending: (id: string) => mutation.isPending && mutation.variables === id };
+}
+
+// Phase 14: the smallest practical surface to exercise real moderation -
+// every donation, newest first, with Cancel offered only where the
+// backend actually allows it (see canAdminCancelDonation). Not a general
+// donation-editing or detail view; that's out of this phase's scope.
+function Donations() {
+  const { cancelDonation, isPending } = useAdminCancelDonation();
+
+  const { data: donations = [], isLoading } = useQuery({
+    queryKey: ['admin-donations'],
+    queryFn: () => donationsApi.getAll(),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold uppercase tracking-wider">Donations</h2>
+        <Badge variant="outline" className="text-xs uppercase">{donations.length} total</Badge>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs uppercase">Food Type</TableHead>
+                <TableHead className="text-xs uppercase">Donor</TableHead>
+                <TableHead className="text-xs uppercase">Status</TableHead>
+                <TableHead className="text-xs uppercase">Claimed By</TableHead>
+                <TableHead className="text-xs uppercase">Posted</TableHead>
+                <TableHead className="text-xs uppercase">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {donations.map((donation) => (
+                <TableRow key={donation.id}>
+                  <TableCell className="font-medium text-sm">
+                    {donation.foodType}
+                    {donation.isUrgent && (
+                      <Badge variant="destructive" className="text-xs uppercase ml-2">Urgent</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{donation.donor.name}</TableCell>
+                  <TableCell>
+                    <Badge variant={donationStatusVariant[donation.status] || "outline"} className="text-xs uppercase">
+                      {donation.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {donation.claimedBy?.name || <span>&mdash;</span>}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground font-mono">
+                    {new Date(donation.createdAt).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    {canAdminCancelDonation(donation) ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs text-destructive"
+                        disabled={isPending(donation.id)}
+                        onClick={() => cancelDonation(donation)}
+                      >
+                        {isPending(donation.id) ? (
+                          <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                        ) : (
+                          <Ban className="w-3.5 h-3.5 mr-1" />
+                        )}
+                        Cancel
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">&mdash;</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>
@@ -527,8 +953,11 @@ const AdminDashboard = () => {
     <Routes>
       <Route path="/" element={<DashboardLayout role="admin" title="Overview"><Overview /></DashboardLayout>} />
       <Route path="/users" element={<DashboardLayout role="admin" title="User Management"><UserManagement /></DashboardLayout>} />
+      <Route path="/donations" element={<DashboardLayout role="admin" title="Donations"><Donations /></DashboardLayout>} />
+      <Route path="/assignments" element={<DashboardLayout role="admin" title="Assign Volunteers"><Assignments /></DashboardLayout>} />
       <Route path="/analytics" element={<DashboardLayout role="admin" title="Analytics"><Analytics /></DashboardLayout>} />
       <Route path="/monitoring" element={<DashboardLayout role="admin" title="Monitoring"><Monitoring /></DashboardLayout>} />
+      <Route path="/profile" element={<DashboardLayout role="admin" title="Profile"><Profile /></DashboardLayout>} />
     </Routes>
   );
 };
