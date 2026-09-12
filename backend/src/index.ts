@@ -1,47 +1,29 @@
-import express from 'express';
-import cors from 'cors';
+import app from './app.js';
 import { config } from './config/index.js';
-import authRoutes from './routes/auth.routes.js';
-import donationRoutes from './routes/donation.routes.js';
-import pickupRoutes from './routes/pickup.routes.js';
-import userRoutes from './routes/user.routes.js';
+import prisma from './models/prisma.js';
+import { createShutdownHandler } from './shutdown.js';
 
-const app = express();
-
-// Middleware
-app.use(cors({
-  origin: config.cors.origin,
-  credentials: true,
-}));
-app.use(express.json());
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/donations', donationRoutes);
-app.use('/api/pickups', pickupRoutes);
-app.use('/api/users', userRoutes);
-
-// Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
-
-// Start server
-app.listen(config.port, '0.0.0.0', () => {
+// Bound to 0.0.0.0 (not the default) so external connections reach the
+// process on hosts like Back4app that route to the container over a
+// non-loopback interface.
+const server = app.listen(config.port, '0.0.0.0', () => {
   console.log(`Server running on port ${config.port}`);
   console.log(`Environment: ${config.nodeEnv}`);
 });
 
-export default app;
+// Phase 20: without this, a container orchestrator's SIGTERM (the normal
+// signal sent before a redeploy/scale-down kills the process) hard-kills
+// in-flight requests immediately instead of letting them finish, and never
+// closes the Prisma connection pool cleanly. See shutdown.ts for the
+// bounded-timeout logic that keeps this from hanging indefinitely if a
+// client holds a keep-alive connection open.
+const shutdown = createShutdownHandler(server, {
+  disconnect: () => prisma.$disconnect(),
+});
 
+process.on('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});
+process.on('SIGINT', () => {
+  void shutdown('SIGINT');
+});
