@@ -114,18 +114,6 @@ export function useClaimDonation() {
   });
 }
 
-export function useDeleteDonation() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: (id: string) => donationsApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.donations.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.donations.myDonations() });
-    },
-  });
-}
-
 // Pickup hooks
 export function useAvailablePickups() {
   return useQuery({

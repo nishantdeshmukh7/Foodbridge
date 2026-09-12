@@ -71,5 +71,41 @@ export const authController = {
       res.status(400).json({ error: message });
     }
   },
+
+  // Always the same response and status, regardless of whether the
+  // account exists or what state it's in - see authService.
+  // requestPasswordReset, which returns void specifically so nothing here
+  // can accidentally branch on its outcome. A genuinely unexpected error
+  // is logged server-side (message only, never the raw token - it never
+  // reaches this far up the call stack in the first place) but still
+  // resolves to the same public response.
+  async forgotPassword(req: Request, res: Response) {
+    const GENERIC_RESPONSE = {
+      message: 'If an account exists for that email, a password reset link has been sent.',
+    };
+
+    try {
+      const { email } = req.body;
+      await authService.requestPasswordReset(email);
+    } catch (error) {
+      console.error(
+        '[auth] forgot-password request failed:',
+        error instanceof Error ? error.message : 'unknown error'
+      );
+    }
+
+    res.json(GENERIC_RESPONSE);
+  },
+
+  async resetPassword(req: Request, res: Response) {
+    try {
+      const { token, password } = req.body;
+      await authService.resetPassword(token, password);
+      res.json({ message: 'Your password has been reset. You can now sign in with your new password.' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to reset password';
+      res.status(400).json({ error: message });
+    }
+  },
 };
 
