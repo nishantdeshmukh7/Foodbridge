@@ -49,12 +49,15 @@ describe('decideResetEmailMode (Phase 19)', () => {
 
 // Integration-level: exercises the real config/index.ts + email.service.ts
 // modules end to end for each NODE_ENV, via real environment variables and
-// a fresh module import - not a mock standing in for them. Only NODE_ENV
-// and DEV_EXPOSE_RESET_LINKS are stubbed; JWT_SECRET/DATABASE_URL are left
-// exactly as src/test/setup.ts already established them (a fresh
-// config/index.ts import re-validates JWT_SECRET and calls process.exit(1)
-// on failure - touching only the two vars this test cares about avoids
-// tripping that).
+// a fresh module import - not a mock standing in for them. Only NODE_ENV,
+// DEV_EXPOSE_RESET_LINKS and (for the production case) FRONTEND_URL are
+// stubbed; JWT_SECRET/DATABASE_URL are left exactly as src/test/setup.ts
+// already established them (a fresh config/index.ts import re-validates
+// JWT_SECRET and calls process.exit(1) on failure - touching only the vars
+// this test cares about avoids tripping that). FRONTEND_URL must be stubbed
+// too when simulating production: Phase 20 made a missing FRONTEND_URL a
+// hard startup failure (process.exit(1), unmocked here) once nodeEnv is
+// 'production', and CI never sets FRONTEND_URL for the backend job.
 describe('emailService.sendPasswordResetEmail end-to-end logging behavior (Phase 19)', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -64,6 +67,9 @@ describe('emailService.sendPasswordResetEmail end-to-end logging behavior (Phase
   async function loadEmailServiceWith(nodeEnv: string, devExposeResetLinks: string) {
     vi.stubEnv('NODE_ENV', nodeEnv);
     vi.stubEnv('DEV_EXPOSE_RESET_LINKS', devExposeResetLinks);
+    if (nodeEnv === 'production') {
+      vi.stubEnv('FRONTEND_URL', 'https://app.example.com');
+    }
     vi.resetModules();
     return import('../services/email.service.js');
   }
