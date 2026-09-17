@@ -22,13 +22,13 @@ const PendingApproval = () => {
           <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
             <Clock className="w-8 h-8 text-primary" />
           </div>
-          
+
           <h1 className="text-2xl font-bold uppercase tracking-wider mb-2">
             Pending Approval
           </h1>
-          
+
           <p className="text-muted-foreground mb-6">
-            Your account is currently under review by our administrators. 
+            Your account is currently under review by our administrators.
             You will be notified once your account has been approved.
           </p>
 
@@ -41,15 +41,15 @@ const PendingApproval = () => {
           </div>
 
           <div className="space-y-3">
-            <Button 
+            <Button
               onClick={handleLogout}
-              variant="outline" 
+              variant="outline"
               className="w-full"
             >
               <LogOut className="w-4 h-4 mr-2" />
               Sign Out
             </Button>
-            
+
             <p className="text-xs text-muted-foreground">
               Already approved?{" "}
               <Link to="/login" className="text-primary hover:underline">

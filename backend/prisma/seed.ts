@@ -243,7 +243,7 @@ async function main() {
   console.log('✅ Created volunteer 3:', volunteer3.email);
 
   // ===== Create Donations from Donor 1 (The Grand Udupi Hotel) =====
-  
+
   // Available donation - South Indian thali
   const donation1 = await prisma.donation.create({
     data: {
@@ -293,7 +293,7 @@ async function main() {
   console.log('✅ Created donation:', donation3.foodType);
 
   // ===== Create Donations from Donor 2 (Shawarma King) =====
-  
+
   // Available donation - Shawarmas
   const donation4 = await prisma.donation.create({
     data: {
@@ -311,7 +311,7 @@ async function main() {
   console.log('✅ Created donation:', donation4.foodType);
 
   // ===== Create Donations from Donor 3 (Suresh Catering) =====
-  
+
   // Available donation - Wedding leftover
   const donation5 = await prisma.donation.create({
     data: {
@@ -342,7 +342,7 @@ async function main() {
       claimedById: ngo.id,
     },
   });
-  
+
   // Create pickup request
   const pickup1 = await prisma.pickupRequest.create({
     data: {
@@ -367,7 +367,7 @@ async function main() {
       claimedById: ngo2.id,
     },
   });
-  
+
   const pickup2 = await prisma.pickupRequest.create({
     data: {
       donationId: pickedUpDonation.id,
@@ -393,7 +393,7 @@ async function main() {
       claimedById: ngo3.id,
     },
   });
-  
+
   await prisma.pickupRequest.create({
     data: {
       donationId: deliveredDonation.id,
@@ -420,7 +420,7 @@ async function main() {
       claimedById: ngo2.id,
     },
   });
-  
+
   await prisma.pickupRequest.create({
     data: {
       donationId: deliveredDonation2.id,
@@ -447,7 +447,7 @@ async function main() {
       claimedById: ngo.id,
     },
   });
-  
+
   await prisma.pickupRequest.create({
     data: {
       donationId: deliveredDonation3.id,

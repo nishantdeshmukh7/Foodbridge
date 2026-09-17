@@ -107,7 +107,20 @@ services:
       # having run) passes comfortably, while a genuinely wedged process
       # is still caught within about a minute, not left looking "healthy"
       # indefinitely.
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      #
+      # 127.0.0.1, NOT "localhost" - deliberately, and this is not
+      # cosmetic. node:alpine's /etc/hosts maps "localhost" to both
+      # 127.0.0.1 and ::1, and busybox wget tries the IPv6 address first,
+      # but src/index.ts binds the server to '0.0.0.0' (IPv4 only). Using
+      # "localhost" therefore produced "wget: can't connect to remote
+      # host: Connection refused" against [::1]:3001 on every probe, so
+      # this container never became healthy and the `frontend` service -
+      # which gates on `condition: service_healthy` below - could never
+      # start at all. Pinning the IPv4 loopback matches what the process
+      # actually listens on. (The frontend's own healthcheck further down
+      # is unaffected: nginx.conf explicitly declares `listen [::]:8080`
+      # alongside the IPv4 listener, so IPv6 works there.)
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3001/health"]
       interval: 10s
       timeout: 5s
       retries: 5

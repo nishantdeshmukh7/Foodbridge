@@ -1,0 +1,95 @@
+# Local-testing-only Postgres, for exercising the full stack on Minikube.
+# Same role as the `db` service in docker-compose.yml (NOT
+# docker-compose.prod.yml, which deliberately runs no database container at
+# all - see that file's header comment). A real deployment should point
+# DATABASE_URL (in a real, non-example secret.yaml) at a managed database
+# (RDS, Cloud SQL, etc.) instead of running Postgres as a bare Deployment
+# like this - a Deployment (rather than a StatefulSet) with a single
+# ReadWriteOnce PVC is fine for disposable local testing, where losing the
+# volume on `minikube delete` is expected and acceptable, but has no
+# built-in replication/backup story, which is why it stops here rather
+# than being proposed as a production pattern.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: foodbridge
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_DB
+              value: foodbridge
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foodbridge-postgres-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: foodbridge
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: foodbridge
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

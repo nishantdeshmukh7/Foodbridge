@@ -34,12 +34,12 @@ function ExpiryBadge({ time }: { time: string }) {
   const diff = expiry.getTime() - now.getTime();
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  
+
   if (diff < 0) return <Badge variant="destructive" className="font-mono text-xs">EXPIRED</Badge>;
-  
+
   const isUrgent = hours < 2;
   const timeDisplay = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-  
+
   return (
     <Badge variant={isUrgent ? "destructive" : "secondary"} className="font-mono text-xs">
       <Clock className="w-3 h-3 mr-1" />
@@ -56,7 +56,7 @@ function StatusBadge({ status }: { status: string }) {
     PICKED_UP: "outline",
     DELIVERED: "outline",
   };
-  
+
   return (
     <Badge variant={variants[status] || "outline"} className="text-xs uppercase">
       {status}
@@ -183,8 +183,8 @@ function Overview() {
                     {donation.donor.name} · {donation.quantity} · {donation.pickupLocation}
                   </p>
                 </div>
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   className="bg-primary text-primary-foreground text-xs uppercase tracking-wider"
                   onClick={() => claimMutation.mutate(donation.id)}
                   disabled={claimMutation.isPending}
@@ -251,7 +251,7 @@ function BrowseFood() {
 
   const { data: donations = [], isLoading } = useQuery({
     queryKey: ['available-donations', searchTerm],
-    queryFn: () => donationsApi.getAll({ 
+    queryFn: () => donationsApi.getAll({
       status: 'AVAILABLE',
       foodType: searchTerm || undefined,
     }),
@@ -337,9 +337,9 @@ function BrowseFood() {
                 </div>
                 <div className="flex items-center gap-2">
                   {donation.donor.phone && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       className="text-xs h-8"
                       onClick={() => window.open(`tel:${donation.donor.phone}`, '_self')}
                     >
@@ -347,7 +347,7 @@ function BrowseFood() {
                     </Button>
                   )}
                   <Button
-                    size="sm" 
+                    size="sm"
                     className="bg-primary text-primary-foreground text-xs h-8"
                     onClick={() => claimMutation.mutate(donation.id)}
                     disabled={claimMutation.isPending}
@@ -495,8 +495,8 @@ function Tracking() {
                   </div>
                 </div>
                 {donation.donor.phone && (
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className="w-full text-xs uppercase tracking-wider"
                     onClick={() => window.open(`tel:${donation.donor.phone}`, '_self')}
                   >

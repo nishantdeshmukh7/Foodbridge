@@ -15,7 +15,7 @@ const Register = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { toast } = useToast();
-  
+
   const [selectedRole, setSelectedRole] = useState("");
   const [formData, setFormData] = useState({
     name: "",
@@ -33,7 +33,7 @@ const Register = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!selectedRole) {
       toast({
         title: "Please select a role",
@@ -141,9 +141,9 @@ const Register = () => {
               </div>
             ))}
 
-            <button 
-              type="submit" 
-              className="btn-dispatch mt-2" 
+            <button
+              type="submit"
+              className="btn-dispatch mt-2"
               disabled={!selectedRole || isLoading}
             >
               {isLoading ? "Creating Account..." : "Create Account"}

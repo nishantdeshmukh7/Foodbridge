@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { pickupService } from '../services/pickup.service.js';
 import { AuthRequest } from '../middleware/auth.js';
 
@@ -7,7 +7,7 @@ export const pickupController = {
     try {
       const pickupRequestId = req.params.pickupRequestId as string;
       const volunteerId = req.body.volunteerId as string;
-      
+
       if (!volunteerId) {
         res.status(400).json({ error: 'Volunteer ID required' });
         return;
@@ -24,7 +24,7 @@ export const pickupController = {
   async acceptPickup(req: AuthRequest, res: Response) {
     try {
       const pickupRequestId = req.params.pickupRequestId as string;
-      
+
       if (req.user!.role !== 'VOLUNTEER') {
         res.status(403).json({ error: 'Only volunteers can accept pickups' });
         return;
@@ -41,7 +41,7 @@ export const pickupController = {
   async markPickedUp(req: AuthRequest, res: Response) {
     try {
       const pickupRequestId = req.params.pickupRequestId as string;
-      
+
       if (req.user!.role !== 'VOLUNTEER') {
         res.status(403).json({ error: 'Only volunteers can mark pickups' });
         return;
@@ -59,7 +59,7 @@ export const pickupController = {
     try {
       const pickupRequestId = req.params.pickupRequestId as string;
       const photoUrl = req.body.photoUrl as string | undefined;
-      
+
       if (req.user!.role !== 'VOLUNTEER') {
         res.status(403).json({ error: 'Only volunteers can complete deliveries' });
         return;

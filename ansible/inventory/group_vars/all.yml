@@ -1,0 +1,13 @@
+---
+app_user: foodbridge
+app_home: /opt/foodbridge
+
+ssh_port: 22
+
+node_exporter_version: "1.8.2"
+
+# Empty by default = the node_exporter firewall rule (roles/firewall) is
+# skipped entirely rather than opened to 0.0.0.0/0. Set to your monitoring
+# host/VPC's real CIDR (e.g. "10.0.0.0/16") before relying on this in a
+# real deployment.
+monitoring_source_cidr: ""

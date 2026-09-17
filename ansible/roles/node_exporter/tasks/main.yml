@@ -1,0 +1,62 @@
+---
+# Installs Prometheus node_exporter as a systemd service, so host-level
+# metrics (CPU, memory, disk, network - the actual VM, not a container)
+# are scrapeable the same way docker-compose.yml's local Prometheus already
+# scrapes cAdvisor for container-level metrics and the backend's own
+# /metrics endpoint for application-level metrics (see docs/MONITORING.md)
+# - together the three cover host, container, and application layers.
+- name: Determine machine architecture for the node_exporter release asset
+  ansible.builtin.set_fact:
+    node_exporter_arch: "{{ 'arm64' if ansible_facts['architecture'] == 'aarch64' else 'amd64' }}"
+
+- name: Create node_exporter system user
+  ansible.builtin.user:
+    name: node_exporter
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+    state: present
+
+- name: Check whether node_exporter binary already present at target version
+  ansible.builtin.stat:
+    path: "/usr/local/bin/node_exporter-{{ node_exporter_version }}"
+  register: node_exporter_binary
+
+- name: Download and extract node_exporter
+  ansible.builtin.unarchive:
+    src: >-
+      https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz
+    dest: /tmp
+    remote_src: true
+  when: not node_exporter_binary.stat.exists
+
+- name: Install versioned node_exporter binary
+  ansible.builtin.copy:
+    src: >-
+      /tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}/node_exporter
+    dest: "/usr/local/bin/node_exporter-{{ node_exporter_version }}"
+    mode: "0755"
+    remote_src: true
+  when: not node_exporter_binary.stat.exists
+
+- name: Symlink /usr/local/bin/node_exporter to the installed version
+  ansible.builtin.file:
+    src: "/usr/local/bin/node_exporter-{{ node_exporter_version }}"
+    dest: /usr/local/bin/node_exporter
+    state: link
+    force: true
+  notify: restart node_exporter
+
+- name: Install node_exporter systemd unit
+  ansible.builtin.template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    mode: "0644"
+  notify: restart node_exporter
+
+- name: Ensure node_exporter is enabled and running
+  ansible.builtin.systemd:
+    name: node_exporter
+    enabled: true
+    state: started
+    daemon_reload: true

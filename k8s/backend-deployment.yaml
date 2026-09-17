@@ -1,0 +1,135 @@
+# Translates docker-compose.prod.yml's backend hardening (non-root, all
+# capabilities dropped, read-only root filesystem, resource limits, DB-aware
+# health check) into Kubernetes primitives. Service is deliberately named
+# "backend" on port 3001 - nginx.conf (baked into the frontend image
+# unchanged) already proxies to exactly "http://backend:3001", so naming it
+# anything else here would require patching the frontend image; this way it
+# does not.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: foodbridge
+  labels:
+    app: backend
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      # Runs the same migrate-then-start command as docker-compose.prod.yml
+      # ("npx prisma migrate deploy && node dist/index.js"), unmodified, as
+      # an initContainer instead of chaining it in the main container's
+      # command. `prisma migrate deploy` only ever applies pending
+      # migrations (never generates/prompts), so this is safe to run once
+      # per rolling-update pod the same way it already runs once per
+      # container start in Compose; running it as a separate initContainer
+      # (rather than inline in the app container's command, as Compose
+      # does) means a migration failure shows up as a distinct, clearly-
+      # named failed init step in `kubectl describe pod` instead of being
+      # buried inside the app container's own crash loop.
+      initContainers:
+        # Kubernetes has no Compose-style `depends_on: condition:
+        # service_healthy` - a Deployment's pods start as soon as they're
+        # scheduled, regardless of whether postgres.yaml's Deployment (a
+        # separate, independently-scheduled object) has finished its own
+        # first-boot initialization (which, for a fresh PGDATA volume, took
+        # ~50s in local testing - see docs/KUBERNETES.md's troubleshooting
+        # section for the exact symptom this produces without this step:
+        # the `migrate` initContainer below hits Init:CrashLoopBackOff for
+        # the first ~50s, then self-heals). This step makes that
+        # self-healing race deterministic instead of relying on
+        # crash-loop backoff to eventually get lucky: it polls the actual
+        # port postgres.yaml listens on and only lets `migrate` start once
+        # something is genuinely accepting TCP connections there.
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z -w2 postgres 5432; do
+                echo "waiting for postgres:5432..."
+                sleep 2
+              done
+        - name: migrate
+          image: foodbridge-backend:local
+          imagePullPolicy: IfNotPresent
+          command: ["npx", "prisma", "migrate", "deploy"]
+          envFrom:
+            - configMapRef:
+                name: foodbridge-backend-config
+            - secretRef:
+                name: foodbridge-backend-secrets
+      containers:
+        - name: backend
+          image: foodbridge-backend:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: foodbridge-backend-config
+            - secretRef:
+                name: foodbridge-backend-secrets
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          # Same sizing rationale as docker-compose.prod.yml (mem_limit:
+          # 256m, cpus: 0.5) - derived from real `docker stats` observation,
+          # not a guess. requests are set lower than limits so the scheduler
+          # can bin-pack normally while still guaranteeing this much.
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: foodbridge
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 3001
+      targetPort: 3001

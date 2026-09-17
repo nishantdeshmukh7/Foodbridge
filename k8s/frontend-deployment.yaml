@@ -1,0 +1,91 @@
+# Translates docker-compose.prod.yml's frontend hardening into Kubernetes
+# primitives. The image already bakes in VITE_API_URL=/api at build time
+# (see Dockerfile / docker-compose.prod.yml build args) and nginx.conf
+# proxies /api and /health to "backend:3001" unchanged - matching the
+# backend Service name/port in backend-deployment.yaml is what makes that
+# work here with zero image changes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: foodbridge
+  labels:
+    app: frontend
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: foodbridge-frontend:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /nginx-health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /nginx-health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 3
+          # Same sizing rationale as docker-compose.prod.yml (mem_limit:
+          # 64m, cpus: 0.25) - static-file serving + reverse proxy is
+          # lightweight, observed via real `docker stats`, not guessed.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 64Mi
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: foodbridge
+spec:
+  selector:
+    app: frontend
+  ports:
+    - port: 8080
+      targetPort: 8080

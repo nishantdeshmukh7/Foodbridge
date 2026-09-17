@@ -1,0 +1,29 @@
+# Single public entry point into the cluster, same "one front door" topology
+# as docker-compose.prod.yml (only nginx/frontend publishes a port there;
+# backend is reachable only from inside the network). Requires the ingress
+# NGINX controller (`minikube addons enable ingress` - see docs/KUBERNETES.md).
+#
+# Routes everything to the frontend Service, which already reverse-proxies
+# /api and /health to the backend itself (nginx.conf, unchanged) - so this
+# Ingress does not need its own /api path rule; adding one would just be a
+# second, redundant proxy hop doing the same job nginx already does.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: foodbridge
+  namespace: foodbridge
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "4m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: foodbridge.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 8080

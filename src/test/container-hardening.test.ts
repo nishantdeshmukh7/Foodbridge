@@ -96,6 +96,25 @@ describe("docker-compose.prod.yml container hardening (Phase 28)", () => {
     expect(block).not.toMatch(/spider.*\/health"/);
   });
 
+  // Regression guard for a real, production-blocking bug found by actually
+  // running `docker compose -f docker-compose.prod.yml up`: the backend
+  // healthcheck used "http://localhost:3001/health", but node:alpine's
+  // /etc/hosts maps "localhost" to both 127.0.0.1 and ::1, busybox wget
+  // tries the IPv6 address first, and src/index.ts binds the server to
+  // '0.0.0.0' (IPv4 only). Every probe therefore failed with "can't
+  // connect to remote host: Connection refused" against [::1]:3001, the
+  // container never became healthy, and `frontend` - which gates on
+  // `condition: service_healthy` - could never start at all.
+  //
+  // The backend must use the IPv4 loopback explicitly. (The frontend is
+  // exempt: nginx.conf declares `listen [::]:8080` alongside the IPv4
+  // listener, so "localhost" resolves fine there either way.)
+  it("backend's healthcheck uses the IPv4 loopback, not 'localhost' (which resolves to IPv6 first)", () => {
+    const block = serviceBlock(prodCompose, "backend");
+    expect(block).toMatch(/http:\/\/127\.0\.0\.1:3001\/health/);
+    expect(block).not.toMatch(/http:\/\/localhost:3001/);
+  });
+
   it("frontend listens internally on the unprivileged 8080, not port 80", () => {
     const block = serviceBlock(prodCompose, "frontend");
     expect(block).toMatch(/:8080/);

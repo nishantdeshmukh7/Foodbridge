@@ -1,0 +1,154 @@
+{
+  "uid": "foodbridge-overview",
+  "title": "FoodBridge — Service Overview",
+  "tags": ["foodbridge"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Backend up",
+      "description": "Prometheus's own view of whether the backend's /metrics endpoint is scrapeable. 0 here means the scrape is failing - the process is down, wedged, or unreachable on the network.",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "up{job=\"foodbridge-backend\"}", "refId": "A", "legendFormat": "up" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red", "index": 0 }, "1": { "text": "UP", "color": "green", "index": 1 } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Process uptime",
+      "description": "How long the current backend process has been running. A value that keeps resetting to near-zero means the container is crash-looping.",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [
+        { "expr": "time() - process_start_time_seconds{job=\"foodbridge-backend\"}", "refId": "A", "legendFormat": "uptime" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Request rate",
+      "description": "Requests per second across all routes, averaged over 5 minutes.",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total[5m]))", "refId": "A", "legendFormat": "req/s" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Error rate (5xx)",
+      "description": "Share of requests returning a 5xx. This is the single most important number on this dashboard - it is the one that means users are actually seeing failures. 4xx is deliberately excluded: a 401/404 is usually a client doing something wrong, not the service being broken.",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 0.0001)",
+          "refId": "A",
+          "legendFormat": "5xx ratio"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 } ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Event-loop lag (p99)",
+      "description": "How long the Node event loop is blocked. Node is single-threaded: sustained lag here means requests are queueing behind synchronous work, and shows up as latency even when CPU looks fine.",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        { "expr": "nodejs_eventloop_lag_p99_seconds{job=\"foodbridge-backend\"}", "refId": "A", "legendFormat": "p99 lag" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 4 }, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Request rate by route",
+      "description": "Per-route traffic. Route labels are Express route PATTERNS (/api/donations/:id), never concrete URLs - see backend/src/metrics.ts for why that matters.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total[5m])) by (route)", "refId": "A", "legendFormat": "{{route}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Latency p50 / p95 / p99",
+      "description": "Derived from the http_request_duration_seconds histogram. p95/p99 matter more than the average - an average hides the slow tail that users actually complain about.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "refId": "B", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "refId": "C", "legendFormat": "p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Responses by status code",
+      "description": "Splits traffic by HTTP status class, so a spike in 4xx (clients misbehaving / auth problems) is visually distinguishable from a spike in 5xx (the service itself failing).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total[5m])) by (status_code)", "refId": "A", "legendFormat": "{{status_code}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Node heap used",
+      "description": "Heap growth that never comes back down between GC cycles is the usual signature of a memory leak - which, under the container memory limits set in docker-compose.prod.yml / k8s manifests, ends in an OOM kill.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "nodejs_heap_size_used_bytes{job=\"foodbridge-backend\"}", "refId": "A", "legendFormat": "heap used" },
+        { "expr": "nodejs_heap_size_total_bytes{job=\"foodbridge-backend\"}", "refId": "B", "legendFormat": "heap total" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Container CPU (cAdvisor)",
+      "description": "Container-level CPU from cAdvisor - the layer the application cannot report on itself. Useful for correlating an application latency spike with the container actually being CPU-throttled against its limit. NOTE: empty on Docker Desktop for Mac - cAdvisor cannot resolve container NAMES there (it needs containerd's socket, which Docker Desktop does not expose to the host), so it emits only cgroup ids. Works normally on a Linux host. See docs/MONITORING.md.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"foodbridge-.*\"}[5m])) by (name)", "refId": "A", "legendFormat": "{{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Container memory (cAdvisor)",
+      "description": "Container-level memory from cAdvisor. Compare against the mem_limit values in docker-compose.prod.yml - approaching the limit is what precedes an OOM kill. NOTE: same Docker Desktop for Mac caveat as the CPU panel - see docs/MONITORING.md.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        { "expr": "sum(container_memory_working_set_bytes{name=~\"foodbridge-.*\"}) by (name)", "refId": "A", "legendFormat": "{{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    }
+  ]
+}

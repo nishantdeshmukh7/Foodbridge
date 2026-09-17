@@ -143,7 +143,7 @@ const HowItWorks = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      
+
       {/* Hero Section */}
       <section className="border-b border-border">
         <div className="container py-16 md:py-20">
@@ -221,7 +221,7 @@ const HowItWorks = () => {
                       </div>
                       <h3 className="font-bold text-xl md:text-2xl mb-3">{step.title}</h3>
                       <p className="text-muted-foreground leading-relaxed mb-4">{step.desc}</p>
-                      
+
                       <div className="bg-card p-4 border border-border">
                         <h4 className="text-xs font-semibold uppercase tracking-wider mb-3">What happens:</h4>
                         <ul className="space-y-2">
@@ -332,7 +332,7 @@ const HowItWorks = () => {
                     <li>• Food with damaged packaging</li>
                   </ul>
                 </div>
-                
+
                 <div className="p-4 border border-border">
                   <h4 className="font-semibold text-sm mb-2 text-green-500">Recommended</h4>
                   <ul className="text-sm text-muted-foreground space-y-1">

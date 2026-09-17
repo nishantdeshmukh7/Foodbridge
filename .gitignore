@@ -51,6 +51,19 @@ postgres_data/
 prometheus_data/
 grafana_data/
 
+# Kubernetes secrets. k8s/secret.example.yaml (placeholders only) is
+# committed and IS the template; the real secret.yaml you generate from it
+# contains a live JWT signing key and database password and must never be.
+k8s/secret.yaml
+
+# Terraform state/vars. terraform/.gitignore covers these too - repeated
+# here so a state file can never be committed from the repo root either.
+# State contains every generated secret in plaintext.
+*.tfstate
+*.tfstate.*
+terraform/.terraform/
+terraform/terraform.tfvars
+
 # Phase 26: database backups. A pg_dump archive contains every user's
 # data, including password hashes and password-reset token hashes - it
 # must never be committed, regardless of where it's produced. *.dump is

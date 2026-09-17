@@ -36,12 +36,12 @@ function ExpiryBadge({ time }: { time: string }) {
   const diff = expiry.getTime() - now.getTime();
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  
+
   if (diff < 0) return <Badge variant="destructive" className="font-mono text-xs">EXPIRED</Badge>;
-  
+
   const isUrgent = hours < 2;
   const timeDisplay = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-  
+
   return (
     <Badge variant={isUrgent ? "destructive" : "secondary"} className="font-mono text-xs">
       <Clock className="w-3 h-3 mr-1" />
@@ -59,7 +59,7 @@ function StatusBadge({ status }: { status: string }) {
     EXPIRED: "destructive",
     CANCELLED: "destructive",
   };
-  
+
   return (
     <Badge variant={variants[status] || "outline"} className="text-xs uppercase">
       {status}
@@ -211,7 +211,7 @@ function CreateListing() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     foodType: "",
     quantity: "",
@@ -237,11 +237,11 @@ function CreateListing() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     const expiryDate = new Date();
     const hours = parseInt(formData.expiryTime) || 4;
     expiryDate.setHours(expiryDate.getHours() + hours);
-    
+
     createMutation.mutate({
       foodType: formData.foodType,
       quantity: formData.quantity,
@@ -264,8 +264,8 @@ function CreateListing() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-xs uppercase tracking-wider">Food Type *</Label>
-                <Select 
-                  value={formData.foodType} 
+                <Select
+                  value={formData.foodType}
                   onValueChange={(value) => setFormData({ ...formData, foodType: value })}
                   required
                 >
@@ -281,7 +281,7 @@ function CreateListing() {
               </div>
               <div className="space-y-2">
                 <Label className="text-xs uppercase tracking-wider">Quantity *</Label>
-                <Input 
+                <Input
                   placeholder="e.g., 50 servings or 20 kg"
                   value={formData.quantity}
                   onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
@@ -292,7 +292,7 @@ function CreateListing() {
 
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wider">Description</Label>
-              <Textarea 
+              <Textarea
                 placeholder="Describe the food items, preparation details..."
                 rows={3}
                 value={formData.description}
@@ -303,7 +303,7 @@ function CreateListing() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-xs uppercase tracking-wider">Expiry Time *</Label>
-                <Select 
+                <Select
                   value={formData.expiryTime}
                   onValueChange={(value) => setFormData({ ...formData, expiryTime: value })}
                   required
@@ -321,7 +321,7 @@ function CreateListing() {
               </div>
               <div className="space-y-2">
                 <Label className="text-xs uppercase tracking-wider">Pickup Location *</Label>
-                <Input 
+                <Input
                   placeholder="Address or landmark"
                   value={formData.pickupLocation}
                   onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })}

@@ -35,7 +35,7 @@ function StatusBadge({ status }: { status: string }) {
     DELIVERED: "outline",
     COMPLETED: "outline",
   };
-  
+
   return (
     <Badge variant={variants[status] || "outline"} className="text-xs uppercase">
       {status}
@@ -66,7 +66,7 @@ interface PickupWithDonation {
 function Overview() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   const { data: availablePickups = [], isLoading: loadingAvailable } = useQuery({
     queryKey: ['available-pickups'],
     queryFn: () => pickupsApi.getAvailable(),
@@ -175,8 +175,8 @@ function Overview() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               {task.status === 'ACCEPTED' && (
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="text-xs uppercase tracking-wider"
                   onClick={() => pickupMutation.mutate(task.id)}
                   disabled={pickupMutation.isPending}
@@ -185,12 +185,12 @@ function Overview() {
                     <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
                   ) : (
                     <Package className="w-3.5 h-3.5 mr-1" />
-                  )} 
+                  )}
                   Picked Up
                 </Button>
               )}
               {task.status === 'PICKED_UP' && (
-                <Button 
+                <Button
                   className="btn-dispatch text-xs"
                   onClick={() => completeMutation.mutate({ id: task.id })}
                   disabled={completeMutation.isPending}
@@ -199,7 +199,7 @@ function Overview() {
                     <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
                   ) : (
                     <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                  )} 
+                  )}
                   Delivered
                 </Button>
               )}
@@ -235,8 +235,8 @@ function Overview() {
                     <MapPin className="w-3 h-3" /> {task.donation.pickupLocation}
                   </p>
                 </div>
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   className="bg-primary text-primary-foreground text-xs uppercase tracking-wider"
                   onClick={() => acceptMutation.mutate(task.id)}
                   disabled={acceptMutation.isPending}
@@ -259,7 +259,7 @@ function Overview() {
 function PickupTasks() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   const { data: availablePickups = [], isLoading: loadingAvailable } = useQuery({
     queryKey: ['available-pickups'],
     queryFn: () => pickupsApi.getAvailable(),
@@ -360,8 +360,8 @@ function PickupTasks() {
                     Quantity: {task.donation.quantity}
                   </p>
                   {!task.isMine && task.status === 'PENDING' ? (
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       className="bg-primary text-primary-foreground text-xs"
                       onClick={() => acceptMutation.mutate(task.id)}
                       disabled={acceptMutation.isPending}
@@ -371,9 +371,9 @@ function PickupTasks() {
                   ) : task.isMine ? (
                     <div className="flex gap-2">
                       {task.status === 'ACCEPTED' && (
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
+                        <Button
+                          size="sm"
+                          variant="outline"
                           className="text-xs"
                           onClick={() => pickupMutation.mutate(task.id)}
                           disabled={pickupMutation.isPending}
@@ -382,13 +382,13 @@ function PickupTasks() {
                             <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
                           ) : (
                             <Package className="w-3.5 h-3.5 mr-1" />
-                          )} 
+                          )}
                           Picked Up
                         </Button>
                       )}
                       {task.status === 'PICKED_UP' && (
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           className="bg-primary text-primary-foreground text-xs"
                           onClick={() => completeMutation.mutate({ id: task.id })}
                           disabled={completeMutation.isPending}
@@ -397,7 +397,7 @@ function PickupTasks() {
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           ) : (
                             <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                          )} 
+                          )}
                           Delivered
                         </Button>
                       )}

@@ -9,6 +9,7 @@ import pickupRoutes from './routes/pickup.routes.js';
 import userRoutes from './routes/user.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
+import { metricsMiddleware, registry } from './metrics.js';
 
 // Builds the Express app without starting a listener, so it can be imported
 // directly by tests (supertest) as well as by the real bootstrap (index.ts).
@@ -30,6 +31,11 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+
+// Before any route, so every request is measured regardless of which
+// router handles it (or whether none does - see getRouteLabel()'s
+// 'unmatched' case in metrics.ts).
+app.use(metricsMiddleware);
 
 // Phase 20: the process being up and Postgres being reachable are two
 // different facts - this used to only report the first one, so an
@@ -72,6 +78,21 @@ app.get('/health', async (req, res) => {
     uptimeSeconds: process.uptime(),
     database: databaseHealthy ? 'ok' : 'unreachable',
   });
+});
+
+// Prometheus scrape endpoint. Unauthenticated, like /health, because a
+// scraper is infrastructure rather than a user - but unlike /health this
+// one MUST NOT be publicly reachable in a real deployment: it exposes
+// internal route names, traffic volumes, error rates and process
+// internals, which is reconnaissance material even though it contains no
+// user data and no secrets. nginx.conf deliberately does not proxy
+// /metrics (only /api and /health), so in this repo's own Docker Compose
+// and Kubernetes topologies the backend's /metrics is reachable only from
+// inside the container network - which is exactly where Prometheus runs.
+// See docs/MONITORING.md's "Why /metrics is not exposed publicly".
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', registry.contentType);
+  res.send(await registry.metrics());
 });
 
 // Routes

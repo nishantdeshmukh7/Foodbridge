@@ -1,0 +1,27 @@
+# Copy to terraform.tfvars and adjust before ever running `terraform plan`
+# against a real AWS account. terraform.tfvars is (and should stay)
+# git-ignored - see terraform/.gitignore.
+#
+# None of these values are secrets themselves (region, instance sizes,
+# counts) - the actual secrets (DB password, JWT secret) are generated
+# inside the Terraform config itself (random_password resources in
+# modules/database and modules/compute) and stored in Secrets Manager,
+# never written to a .tfvars file or committed anywhere.
+
+aws_region   = "ap-south-1"
+environment  = "production"
+project_name = "foodbridge"
+
+az_count = 2
+
+db_instance_class       = "db.t4g.micro"
+db_allocated_storage_gb = 20
+db_multi_az             = false
+
+backend_desired_count = 2
+frontend_desired_count = 2
+backend_max_count      = 5
+
+# Leave both null to serve over the ALB's own DNS name on plain HTTP.
+# domain_name         = "foodbridge.example.com"
+# acm_certificate_arn = "arn:aws:acm:ap-south-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"

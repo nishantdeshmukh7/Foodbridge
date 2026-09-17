@@ -9,7 +9,7 @@ const Login = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { toast } = useToast();
-  
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -42,18 +42,18 @@ const Login = () => {
 
     try {
       const user = await login(email, password);
-      
+
       toast({
         title: "Login successful",
         description: "Welcome back!",
       });
-      
+
       // Redirect based on user role
       const roleDashboard = `/${user.role.toLowerCase()}`;
       navigate(roleDashboard, { replace: true });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Invalid email or password";
-      
+
       // Check if account is pending approval, or was reviewed and rejected -
       // these are distinct backend states/messages (see authService.login).
       if (errorMessage.includes('pending approval')) {

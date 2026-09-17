@@ -1,0 +1,30 @@
+---
+# Dedicated, unprivileged system account to own and run this app's Docker
+# Compose stack - deploys should never run as root or as a personal login
+# user. Mirrors the same "don't run as more privilege than needed"
+# principle already applied inside the containers themselves
+# (Dockerfile/docker-compose.prod.yml: non-root users, dropped
+# capabilities).
+- name: Create foodbridge system group
+  ansible.builtin.group:
+    name: "{{ app_user }}"
+    system: true
+    state: present
+
+- name: Create foodbridge system user
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    group: "{{ app_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ app_home }}"
+    create_home: true
+    state: present
+
+- name: Ensure app home directory has correct ownership
+  ansible.builtin.file:
+    path: "{{ app_home }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0750"

@@ -108,8 +108,8 @@ function AppSidebar({ role, onLogout }: { role: string; onLogout?: () => void })
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <a 
-                    href="#" 
+                  <a
+                    href="#"
                     onClick={handleLogoutClick}
                     className="hover:bg-destructive/10 text-destructive"
                   >
@@ -135,12 +135,12 @@ interface DashboardLayoutProps {
 const DashboardLayout = ({ role, title, children }: DashboardLayoutProps) => {
   const navigate = useNavigate();
   const { logout } = useAuth();
-  
+
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
-  
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">

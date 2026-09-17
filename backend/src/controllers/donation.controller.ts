@@ -89,7 +89,7 @@ export const donationController = {
   async claim(req: AuthRequest, res: Response) {
     try {
       const id = req.params.id as string;
-      
+
       if (req.user!.role !== 'NGO') {
         res.status(403).json({ error: 'Only NGOs can claim donations' });
         return;

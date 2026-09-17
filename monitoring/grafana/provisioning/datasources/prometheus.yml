@@ -1,0 +1,13 @@
+# Provisioned automatically at Grafana start, so the stack is useful the
+# moment it comes up rather than requiring someone to click through
+# "add a data source" by hand every time the volume is recreated.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    # Reached over the internal Compose network, not a host-published port.
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

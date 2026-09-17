@@ -186,14 +186,17 @@ PENDING
 * JWT
 * bcrypt
 
-### Infrastructure
+### Infrastructure & DevOps
 
-* Docker
-* Docker Compose
-* Nginx
-* GitHub Actions
-* Prometheus
-* Grafana
+* Docker (multi-stage builds, non-root, hardened)
+* Docker Compose (dev/CI and production-style)
+* Kubernetes (Minikube-tested: Deployments, Services, Ingress, HPA, probes)
+* Terraform (AWS target architecture — **validated, never applied**; see below)
+* Ansible (Linux host provisioning: Docker, UFW, node_exporter, auto-patching)
+* Nginx (reverse proxy, security headers, CSP)
+* GitHub Actions (CI, image publishing to GHCR, K8s manifest validation)
+* Prometheus + Grafana + cAdvisor + node_exporter
+* Trivy (container image scanning)
 
 ### Email
 
@@ -240,6 +243,98 @@ The backend is not directly exposed to the public network in the production Dock
 
 ---
 
+## DevOps & Infrastructure
+
+The same two container images run in three topologies — Docker Compose, Kubernetes, and (by design) AWS ECS Fargate. Full documentation lives in [`docs/`](docs/):
+
+| Document | Contents |
+|---|---|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, all three topologies, request flow, scalability |
+| [DEVOPS_AUDIT.md](docs/DEVOPS_AUDIT.md) | Pre-work audit: what existed, what was missing |
+| [CI_CD.md](docs/CI_CD.md) | The three GitHub Actions workflows |
+| [KUBERNETES.md](docs/KUBERNETES.md) | Minikube setup, design decisions, troubleshooting |
+| [TERRAFORM.md](docs/TERRAFORM.md) | AWS target architecture and its limitations |
+| [ANSIBLE.md](docs/ANSIBLE.md) | Host provisioning roles and idempotency verification |
+| [MONITORING.md](docs/MONITORING.md) | Three metric layers, dashboards, PromQL |
+| [LOGGING.md](docs/LOGGING.md) | Current logging, what's never logged, what's deferred |
+| [NETWORKING.md](docs/NETWORKING.md) | Ports, DNS, TLS, load balancing, `TRUST_PROXY` |
+| [SECURITY.md](docs/SECURITY.md) | Security audit results, findings, residual risk |
+| [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Problems by area, including ones actually hit |
+| [DEVOPS_IMPLEMENTATION_REPORT.md](docs/DEVOPS_IMPLEMENTATION_REPORT.md) | Everything done, tested, and still limited |
+
+### Quick start (full stack with monitoring)
+
+```bash
+echo 'GRAFANA_ADMIN_PASSWORD=pick-something-local' >> .env   # required, no default
+docker compose up -d --build
+```
+
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:5174 |
+| Backend | http://localhost:4000/health · http://localhost:4000/metrics |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 → Dashboards → FoodBridge |
+| cAdvisor | http://localhost:8080 |
+
+All monitoring ports bind to `127.0.0.1` only. See [MONITORING.md](docs/MONITORING.md).
+
+### Kubernetes (local)
+
+```bash
+minikube start --driver=docker
+minikube addons enable ingress metrics-server
+
+docker build -t foodbridge-backend:local ./backend
+docker build -t foodbridge-frontend:local --build-arg VITE_API_URL=/api .
+minikube image load foodbridge-backend:local
+minikube image load foodbridge-frontend:local
+
+kubectl apply -f k8s/namespace.yaml -f k8s/configmap.yaml
+cp k8s/secret.example.yaml k8s/secret.yaml && $EDITOR k8s/secret.yaml   # gitignored
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/postgres.yaml -f k8s/backend-deployment.yaml \
+               -f k8s/frontend-deployment.yaml -f k8s/ingress.yaml -f k8s/hpa.yaml
+
+kubectl -n foodbridge rollout status deploy/backend
+kubectl -n foodbridge port-forward svc/frontend 18080:8080   # → http://localhost:18080
+```
+
+`VITE_API_URL=/api` is required — Vite bakes it in at **build** time. Details and troubleshooting in [KUBERNETES.md](docs/KUBERNETES.md).
+
+### Terraform — AWS (not deployed)
+
+> **AWS deployment was not performed because no active AWS account/credentials were available.** The Terraform configuration was prepared for AWS deployment and validated locally: `terraform fmt`, `init -backend=false`, and `validate` all pass. `terraform plan` fails cleanly at the AWS credential check. **`terraform apply` has never been run and no AWS resource has ever existed.**
+
+```bash
+cd terraform
+terraform fmt -recursive && terraform init -backend=false && terraform validate
+```
+
+Designed: VPC across 2 AZs, public/private subnets, NAT gateways, chained security groups, ALB with path-based routing, ECS Fargate services, RDS PostgreSQL, ECR, Secrets Manager, IAM least privilege, autoscaling. See [TERRAFORM.md](docs/TERRAFORM.md).
+
+### Ansible — host provisioning
+
+```bash
+cd ansible
+ansible-playbook playbooks/site.yml --check --diff    # dry run
+ansible-playbook playbooks/site.yml
+```
+
+Installs Docker + Compose plugin, a dedicated service account, UFW default-deny, node_exporter, and security-only unattended upgrades. Idempotency verified (second run: `changed=0`). See [ANSIBLE.md](docs/ANSIBLE.md).
+
+### CI/CD
+
+| Workflow | Purpose |
+|---|---|
+| `ci.yml` | Lint, typecheck, tests (real Postgres), builds, compose integration + Trivy |
+| `docker-publish.yml` | Build both images, push to GHCR with immutable `sha-` tags |
+| `k8s-validate.yml` | kubeconform + server-side dry-run on an ephemeral `kind` cluster |
+
+See [CI_CD.md](docs/CI_CD.md).
+
+---
+
 ## Project Structure
 
 ```text
@@ -267,14 +362,49 @@ FoodBridge/
 │       ├── create-admin.ts
 │       └── backup/
 │
+├── k8s/                         # Kubernetes manifests (Minikube-tested)
+│   ├── namespace.yaml
+│   ├── configmap.yaml
+│   ├── secret.example.yaml      # placeholders only; secret.yaml is gitignored
+│   ├── postgres.yaml            # local testing only
+│   ├── backend-deployment.yaml
+│   ├── frontend-deployment.yaml
+│   ├── ingress.yaml
+│   └── hpa.yaml
+│
+├── terraform/                   # AWS target architecture (validated, NOT applied)
+│   ├── main.tf  variables.tf  outputs.tf  providers.tf  versions.tf
+│   ├── terraform.tfvars.example
+│   └── modules/
+│       ├── networking/          # VPC, subnets, IGW, NAT, route tables
+│       ├── security/            # security groups (ALB / ECS / RDS)
+│       ├── database/            # RDS Postgres + Secrets Manager
+│       └── compute/             # ECR, ALB, ECS Fargate, IAM, autoscaling
+│
+├── ansible/                     # Linux host provisioning
+│   ├── ansible.cfg
+│   ├── inventory/
+│   ├── playbooks/site.yml
+│   └── roles/                   # app_user, docker, firewall,
+│                                #   node_exporter, unattended_upgrades
+│
+├── monitoring/
+│   └── grafana/                 # provisioned datasource + dashboard (in git)
+│
+├── docs/                        # DevOps documentation (see index above)
+│
 ├── .github/
 │   └── workflows/
-│       └── ci.yml
+│       ├── ci.yml
+│       ├── docker-publish.yml
+│       └── k8s-validate.yml
 │
 ├── docker-compose.yml
 ├── docker-compose.prod.yml
 ├── Dockerfile
 ├── nginx.conf
+├── prometheus.yml
+├── Makefile
 ├── .env.example
 ├── .env.production.example
 └── README.md
@@ -288,10 +418,17 @@ FoodBridge/
 
 Install the following before running the project:
 
-* Node.js
+* Node.js 20+
 * npm
 * Docker and Docker Compose
 * PostgreSQL, or use the provided Docker development database
+
+Optional, only for the corresponding DevOps sections:
+
+* `minikube` and `kubectl` — for the Kubernetes deployment
+* `terraform` — for validating the AWS configuration (no AWS account needed)
+* `ansible` — for the host-provisioning playbook
+* `trivy` — for local image scanning (`make scan`)
 
 ---
 
@@ -489,9 +626,14 @@ FoodBridge has automated backend and frontend test suites.
 Current verified test coverage:
 
 ```text
-Backend:   477 / 477 tests passing
-Frontend:  156 / 156 tests passing
+Backend:   483 / 483 tests passing   (33 files)
+Frontend:  157 / 157 tests passing   (17 files)
 ```
+
+Backend tests run against a **real PostgreSQL database**, not mocks — for a Prisma
+application, mocked database tests pass while real migrations break. See
+[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for the one-time test-database setup
+if `npm test` reports `DATABASE_URL is not set`.
 
 Run backend tests:
 

@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  donationsApi, 
-  pickupsApi, 
-  usersApi, 
+import {
+  donationsApi,
+  pickupsApi,
+  usersApi,
   authApi,
   Donation,
   CreateDonationData,
@@ -52,7 +52,7 @@ export function useProfile() {
 
 export function useUpdateProfile() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (data: Parameters<typeof authApi.updateProfile>[0]) => authApi.updateProfile(data),
     onSuccess: (data) => {
@@ -93,7 +93,7 @@ export function useDonationStats() {
 
 export function useCreateDonation() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (data: CreateDonationData) => donationsApi.create(data),
     onSuccess: () => {
@@ -105,7 +105,7 @@ export function useCreateDonation() {
 
 export function useClaimDonation() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (id: string) => donationsApi.claim(id),
     onSuccess: () => {
@@ -139,7 +139,7 @@ export function usePickup(id: string) {
 
 export function useAcceptPickup() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (pickupRequestId: string) => pickupsApi.accept(pickupRequestId),
     onSuccess: () => {
@@ -150,9 +150,9 @@ export function useAcceptPickup() {
 
 export function useCompletePickup() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ pickupRequestId, photoUrl }: { pickupRequestId: string; photoUrl?: string }) => 
+    mutationFn: ({ pickupRequestId, photoUrl }: { pickupRequestId: string; photoUrl?: string }) =>
       pickupsApi.complete(pickupRequestId, photoUrl),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.pickups.all });
@@ -162,7 +162,7 @@ export function useCompletePickup() {
 
 export function useAssignVolunteer() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ pickupRequestId, volunteerId }: { pickupRequestId: string; volunteerId: string }) =>
       pickupsApi.assign(pickupRequestId, volunteerId),
@@ -204,7 +204,7 @@ export function usePendingApprovals() {
 
 export function useApproveUser() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (id: string) => usersApi.approve(id),
     onSuccess: () => {
@@ -216,7 +216,7 @@ export function useApproveUser() {
 
 export function useRejectUser() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (id: string) => usersApi.reject(id),
     onSuccess: () => {
@@ -228,7 +228,7 @@ export function useRejectUser() {
 
 export function useSuspendUser() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (id: string) => usersApi.suspend(id),
     onSuccess: () => {

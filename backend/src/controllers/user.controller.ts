@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { userService } from '../services/user.service.js';
 import { AuthRequest } from '../middleware/auth.js';
 
@@ -8,7 +8,7 @@ export const userController = {
       const role = req.query.role as string | undefined;
       const isApproved = req.query.isApproved === 'true' ? true : req.query.isApproved === 'false' ? false : undefined;
       const search = req.query.search as string | undefined;
-      
+
       const users = await userService.getAll({ role, isApproved, search });
       res.json(users);
     } catch (error) {

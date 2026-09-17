@@ -1,0 +1,67 @@
+name: Kubernetes Validate
+
+# This workflow deliberately does NOT deploy anywhere real - there is no
+# cloud cluster for it to target, and no cloud credentials are configured
+# for this project (see docs/DEVOPS_AUDIT.md). It exists so that a broken
+# manifest (bad YAML, a field that doesn't exist on the resource kind, a
+# probe pointing at the wrong port) is caught on every PR, well before
+# anyone manually runs `kubectl apply` against a real Minikube/EKS cluster.
+#
+# Two independent checks:
+#   1. kubeconform - validates every manifest against the real Kubernetes
+#      OpenAPI schema for the declared apiVersion/kind. Needs no cluster at
+#      all (schema-only, downloaded from a public schema mirror).
+#   2. kubectl apply --dry-run=server against a throwaway `kind` cluster
+#      (Kubernetes-in-Docker, created and destroyed entirely within this
+#      job). This is NOT a deployment - dry-run=server asks the real API
+#      server's admission chain to validate the request without persisting
+#      anything, which is strictly more thorough than the pure client-side
+#      dry-run kubectl also has, because kubectl's client-side dry-run
+#      actually requires live server connectivity anyway to resolve
+#      resource schemas (verified locally - see docs/KUBERNETES.md) so a
+#      real, disposable cluster is the honest way to get this check to work
+#      in CI at all, not a shortcut.
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths: [ "k8s/**", ".github/workflows/k8s-validate.yml" ]
+  pull_request:
+    branches: [ "main", "master" ]
+    paths: [ "k8s/**", ".github/workflows/k8s-validate.yml" ]
+  workflow_dispatch: {}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin kubeconform
+
+      - name: kubeconform schema validation
+        run: |
+          kubeconform -strict -summary -kubernetes-version 1.30.0 \
+            k8s/*.yaml
+
+      - name: Create ephemeral kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: foodbridge-ci
+
+      - name: Server-side dry-run apply against ephemeral cluster
+        run: |
+          for f in k8s/*.yaml; do
+            echo "Dry-run applying $f"
+            kubectl apply --dry-run=server -f "$f"
+          done
+        # The kind cluster is destroyed automatically when the runner is torn
+        # down at the end of the job - nothing persists, nothing is deployed
+        # anywhere reachable outside this one CI run.

@@ -2,9 +2,32 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
+  # Container-level metrics (CPU/memory/network per container) for every
+  # container on the Docker host - cAdvisor derives these from the kernel's
+  # own cgroup accounting, so it works for any container without the
+  # application knowing anything about it. Answers "is this container
+  # resource-starved", never "is this API returning errors".
   - job_name: 'cadvisor'
     static_configs:
       - targets: ['cadvisor:8080']
+
+  # Prometheus scraping itself - standard practice, and the cheapest way to
+  # notice that Prometheus is itself unhealthy or falling behind.
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+
+  # Application-level metrics from the backend's own /metrics endpoint
+  # (backend/src/metrics.ts): request counts, request duration histograms,
+  # and Node process internals (event-loop lag, heap, GC). This is the
+  # layer cAdvisor structurally cannot provide - only the app knows how
+  # many requests it served, how long they took, and how many failed.
+  #
+  # Reached over the internal Compose network as "backend:3001", not via
+  # the host-published port, and nginx deliberately does not proxy /metrics
+  # publicly - see backend/src/app.ts's comment on the endpoint and
+  # docs/MONITORING.md.
+  - job_name: 'foodbridge-backend'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['backend:3001']

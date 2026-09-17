@@ -1,0 +1,29 @@
+# Non-secret backend configuration. Mirrors the environment split already
+# established in docker-compose.prod.yml: anything that is not a credential
+# lives here; anything that is (DATABASE_URL, JWT_SECRET, SMTP_PASSWORD)
+# lives in a Secret instead - see secret.example.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: foodbridge-backend-config
+  namespace: foodbridge
+data:
+  NODE_ENV: "production"
+  PORT: "3001"
+  JWT_EXPIRES_IN: "24h"
+  # Same reasoning as docker-compose.prod.yml's TRUST_PROXY: this must equal
+  # the number of trusted reverse-proxy hops in front of the backend. In
+  # this cluster that is exactly one hop - the Ingress controller - so the
+  # value is 1, same as the Docker Compose production topology. If you put
+  # another proxy/CDN in front of the Ingress too, increase this to match.
+  TRUST_PROXY: "1"
+  # Disabled by default, same safe-by-default reasoning as
+  # docker-compose.prod.yml - enable real SMTP delivery by adding the SMTP_*
+  # keys to a real (non-example) Secret and referencing them from
+  # backend-deployment.yaml, the same way DATABASE_URL/JWT_SECRET already are.
+  EMAIL_PROVIDER: "none"
+  # Set to your real Ingress host once you have one (see ingress.yaml) - the
+  # backend uses this for CORS and for building links in password-reset
+  # email, exactly as it does today via docker-compose.prod.yml's
+  # FRONTEND_URL.
+  FRONTEND_URL: "http://foodbridge.local"

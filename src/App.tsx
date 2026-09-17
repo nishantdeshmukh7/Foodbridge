@@ -23,15 +23,15 @@ const queryClient = new QueryClient();
 // Component to handle role-based redirects after login
 function AuthRedirect() {
   const { user, isAuthenticated, isLoading } = useAuth();
-  
+
   if (isLoading) {
     return null;
   }
-  
+
   if (isAuthenticated && user) {
     return <Navigate to={`/${user.role.toLowerCase()}`} replace />;
   }
-  
+
   return null;
 }
 
@@ -46,7 +46,7 @@ function AppRoutes() {
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/pending-approval" element={<PendingApproval />} />
       <Route path="/registration-rejected" element={<RegistrationRejected />} />
-      
+
       {/* Protected Dashboard Routes */}
       <Route
         path="/donor/*"
@@ -80,7 +80,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      
+
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

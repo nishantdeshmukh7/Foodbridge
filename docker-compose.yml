@@ -109,6 +109,13 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in a local .env file before starting the monitoring stack - see README.md}
     volumes:
       - grafana_data:/var/lib/grafana
+      # Provisioned datasource + dashboard, so the stack is actually useful
+      # the moment it starts instead of requiring someone to click through
+      # Grafana's UI to add a Prometheus source and rebuild panels by hand
+      # every time the grafana_data volume is recreated. Read-only: these
+      # files are the source of truth in git, not Grafana's own database.
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
 

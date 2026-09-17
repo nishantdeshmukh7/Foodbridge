@@ -1,0 +1,25 @@
+---
+# Prepares a fresh Linux host to run this repo's production Docker Compose
+# stack (docker-compose.prod.yml). This playbook does NOT deploy the
+# application itself - it stops at "the host is ready" (Docker installed,
+# a dedicated app user exists, the firewall is configured, the host is
+# monitored and self-patching). Deploying the app onto a host prepared this
+# way is then just:
+#
+#   scp docker-compose.prod.yml nginx.conf .env.production <host>:/opt/foodbridge/
+#   ssh <host> 'cd /opt/foodbridge && docker compose -f docker-compose.prod.yml \
+#     --env-file .env.production up -d --build'
+#
+# which is deliberately left as a manual/CI step rather than folded into
+# this playbook - see docs/ANSIBLE.md for why config-management (this) and
+# application deployment (Docker/CI) are kept as separate concerns here.
+- name: Prepare FoodBridge application host
+  hosts: app_servers
+  become: true
+
+  roles:
+    - app_user
+    - docker
+    - firewall
+    - node_exporter
+    - unattended_upgrades

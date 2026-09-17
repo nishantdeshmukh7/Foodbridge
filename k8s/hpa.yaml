@@ -1,0 +1,32 @@
+# Requires the metrics-server addon (`minikube addons enable metrics-server`
+# - see docs/KUBERNETES.md). Scales the backend, since it's the service that
+# does actual CPU-bound work (bcrypt hashing, JSON handling, DB queries);
+# the frontend is static-file serving + a thin reverse proxy and is left at
+# its fixed replica count (frontend-deployment.yaml) since it never comes
+# close to its resource limits under normal load - autoscaling it would be
+# complexity with no real benefit.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+  namespace: foodbridge
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      # Waits 2 minutes of sustained low utilization before removing a
+      # replica, so a brief traffic dip doesn't immediately undo a scale-up
+      # that was just needed moments earlier.
+      stabilizationWindowSeconds: 120
