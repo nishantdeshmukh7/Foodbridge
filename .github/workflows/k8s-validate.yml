@@ -58,7 +58,21 @@ jobs:
 
       - name: Server-side dry-run apply against ephemeral cluster
         run: |
+          # namespace.yaml must be applied (for real, not dry-run) before any
+          # other manifest's dry-run: every other file declares
+          # `namespace: foodbridge` in its metadata, and a dry-run apply is
+          # still rejected with "namespaces \"foodbridge\" not found" if that
+          # namespace doesn't actually exist yet on the target cluster - a
+          # dry-run validates the request against real cluster state, it
+          # doesn't simulate creating prerequisite objects. This exact
+          # failure was hit in CI (glob order applied backend-deployment.yaml
+          # alphabetically before namespace.yaml) and is fixed by applying
+          # the namespace first, unconditionally.
+          kubectl apply -f k8s/namespace.yaml
           for f in k8s/*.yaml; do
+            if [ "$f" = "k8s/namespace.yaml" ]; then
+              continue
+            fi
             echo "Dry-run applying $f"
             kubectl apply --dry-run=server -f "$f"
           done
